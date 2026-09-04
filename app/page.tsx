@@ -89,7 +89,7 @@ export default async function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">🕐 Recent Leads</span>
-            <Link href="/leads" style={{ fontSize: '0.8rem', color: 'var(--cyan)', textDecoration: 'none' }}>
+            <Link href="/leads" className="card-link">
               View all →
             </Link>
           </div>
@@ -142,7 +142,7 @@ export default async function DashboardPage() {
                 <span className="qa-icon">✉️</span>
                 <span className="qa-text">
                   <span className="qa-label">Full Contact Leads</span>
-                  <span className="qa-desc">Active carriers with both phone & email</span>
+                  <span className="qa-desc">Active carriers with both phone &amp; email</span>
                 </span>
               </Link>
             </div>

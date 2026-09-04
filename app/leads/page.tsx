@@ -323,25 +323,27 @@ export default function LeadsPage() {
                       onChange={() => handleToggleRow(lead.usdot_number)}
                     />
                   </td>
-                  {visibleCols.includes('usdot_number') && <td className="td-usdot">{lead.usdot_number}</td>}
+                  {visibleCols.includes('usdot_number') && <td><span className="td-usdot">{lead.usdot_number}</span></td>}
                   {visibleCols.includes('legal_name') && (
-                    <td className="td-name" title={lead.legal_name}>
-                      {lead.legal_name || '—'}
+                    <td>
+                      <span className="td-name" title={lead.legal_name}>
+                        {lead.legal_name || '—'}
+                      </span>
                     </td>
                   )}
                   {visibleCols.includes('phone') && (
-                    <td className="td-contact">
+                    <td>
                       {lead.phone ? (
-                        <a href={`tel:${lead.phone}`} onClick={e => e.stopPropagation()}>{lead.phone}</a>
+                        <a href={`tel:${lead.phone}`} className="td-tel" onClick={e => e.stopPropagation()}>{lead.phone}</a>
                       ) : (
                         <span className="td-empty">—</span>
                       )}
                     </td>
                   )}
                   {visibleCols.includes('email') && (
-                    <td className="td-contact">
+                    <td>
                       {lead.email ? (
-                        <a href={`mailto:${lead.email}`} onClick={e => e.stopPropagation()}>{lead.email}</a>
+                        <a href={`mailto:${lead.email}`} className="td-email" onClick={e => e.stopPropagation()}>{lead.email}</a>
                       ) : (
                         <span className="td-empty">—</span>
                       )}
@@ -431,18 +433,49 @@ export default function LeadsPage() {
               <button className="drawer-close" onClick={() => setSelectedLead(null)}>✕</button>
             </div>
             <div className="drawer-body">
+              {/* Quick Actions */}
+              {(selectedLead.phone || selectedLead.email) && (
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  {selectedLead.phone && (
+                    <a href={`tel:${selectedLead.phone}`} className="drawer-action-link dlink-green">
+                      📞 {selectedLead.phone}
+                    </a>
+                  )}
+                  {selectedLead.email && (
+                    <a href={`mailto:${selectedLead.email}`} className="drawer-action-link dlink-purple">
+                      ✉️ {selectedLead.email}
+                    </a>
+                  )}
+                  <a
+                    href={`/leads/${selectedLead.usdot_number}`}
+                    className="drawer-action-link dlink-blue"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    🔗 Full Profile
+                  </a>
+                </div>
+              )}
+
               <div className="drawer-section">
                 <div className="drawer-section-title">Contact Information</div>
                 <div className="drawer-grid">
-                  <div className="df"><div className="df-label">Phone</div><div className="df-value">{selectedLead.phone || '—'}</div></div>
-                  <div className="df"><div className="df-label">Email</div><div className="df-value">{selectedLead.email || '—'}</div></div>
+                  <div className="df"><div className="df-label">Phone</div><div className="df-value" style={{ color: selectedLead.phone ? 'var(--green-bright,#34d399)' : 'var(--muted)' }}>{selectedLead.phone || '—'}</div></div>
+                  <div className="df"><div className="df-label">Email</div><div className="df-value" style={{ color: selectedLead.email ? 'var(--purple)' : 'var(--muted)', fontSize: '0.78rem' }}>{selectedLead.email || '—'}</div></div>
                 </div>
               </div>
               <div className="drawer-section">
-                <div className="drawer-section-title">Details</div>
+                <div className="drawer-section-title">Status & Registration</div>
                 <div className="drawer-grid">
-                  <div className="df"><div className="df-label">Status</div><div className="df-value">{selectedLead.carrier_status}</div></div>
-                  <div className="df"><div className="df-label">Date Added</div><div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div></div>
+                  <div className="df"><div className="df-label">Status</div><div className="df-value"><StatusPill status={selectedLead.carrier_status} /></div></div>
+                  <div className="df"><div className="df-label">USDOT</div><div className="df-value" style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--cyan)', fontSize: '0.78rem' }}>{selectedLead.usdot_number}</div></div>
+                </div>
+              </div>
+              <div className="drawer-section">
+                <div className="drawer-section-title">Timeline</div>
+                <div className="drawer-grid">
+                  <div className="df"><div className="df-label">MOTUS Entry</div><div className="df-value">{formatDate(selectedLead.motus_entry_date)}</div></div>
+                  <div className="df"><div className="df-label">Date Scraped</div><div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div></div>
                 </div>
               </div>
             </div>

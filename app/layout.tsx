@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import './globals.css';
+import NavLink from './components/NavLink';
 
 export const metadata: Metadata = {
   title: 'LeadBase — Carrier Intelligence Dashboard',
@@ -11,8 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800;14..32,900&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
       </head>
@@ -20,16 +23,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div id="app-root">
           <header className="topbar">
             <div className="topbar-left">
-              <div className="brand">
-                <span className="brand-icon">🚛</span>
-                <div>
-                  <div className="brand-name">LeadBase</div>
-                  <div className="brand-sub">Carrier Intelligence</div>
+              <NavLink href="/">
+                <div className="brand">
+                  <div className="brand-logo">
+                    <Image
+                      src="/logo.jpg"
+                      alt="LeadBase logo"
+                      width={36}
+                      height={36}
+                      style={{ borderRadius: 8, display: 'block' }}
+                      priority
+                    />
+                  </div>
+                  <div>
+                    <div className="brand-name">LeadBase</div>
+                    <div className="brand-sub">Carrier Intelligence</div>
+                  </div>
                 </div>
-              </div>
+              </NavLink>
               <nav className="top-nav">
-                <a href="/" className="nav-link">Dashboard</a>
-                <a href="/leads" className="nav-link">Leads</a>
+                <NavLink href="/">Dashboard</NavLink>
+                <NavLink href="/leads">Leads</NavLink>
               </nav>
             </div>
             <div className="topbar-right">
