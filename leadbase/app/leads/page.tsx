@@ -11,6 +11,7 @@ import ExportHistoryDrawer from './components/ExportHistoryDrawer';
 import ColumnVisibilityModal from './components/ColumnVisibilityModal';
 import EquipmentDropdown from './components/EquipmentDropdown';
 import StatusDropdown from './components/StatusDropdown';
+import SortDropdown from './components/SortDropdown';
 
 const PAGE_SIZE = 50;
 
@@ -69,7 +70,12 @@ export default function LeadsPage() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch leads from server
-  const fetchLeads = useCallback(async (pg = 1, currentFilters = filters) => {
+  const fetchLeads = useCallback(async (
+    pg = 1,
+    currentFilters = filters,
+    currentSortCol = sortCol,
+    currentSortDir = sortDir
+  ) => {
     setLoading(true);
     try {
       const res = await fetch('/api/leads', {
@@ -80,8 +86,8 @@ export default function LeadsPage() {
           filters: currentFilters,
           page: pg,
           limit: PAGE_SIZE,
-          sort: sortCol,
-          dir: sortDir
+          sort: currentSortCol,
+          dir: currentSortDir
         })
       });
       const data = await res.json();
@@ -104,7 +110,7 @@ export default function LeadsPage() {
     setFilters(newFilters);
     setSelectedIds([]);
     setSelectAllMatching(false);
-    fetchLeads(1, newFilters);
+    fetchLeads(1, newFilters, sortCol, sortDir);
   }
 
   function handleFilterReset() {
@@ -112,7 +118,7 @@ export default function LeadsPage() {
     setFilters(clean);
     setSelectedIds([]);
     setSelectAllMatching(false);
-    fetchLeads(1, clean);
+    fetchLeads(1, clean, sortCol, sortDir);
   }
 
   function handleRemoveSingleFilter(key: keyof FilterState, val?: string) {
@@ -142,14 +148,14 @@ export default function LeadsPage() {
       delete (next as Record<string, unknown>)[key];
     }
     setFilters(next);
-    fetchLeads(1, next);
+    fetchLeads(1, next, sortCol, sortDir);
   }
 
-  function handleSort(col: string) {
-    const newDir = sortCol === col && sortDir === 'desc' ? 'asc' : 'desc';
+  function handleSort(col: string, dir?: 'asc' | 'desc') {
+    const newDir = dir || (sortCol === col && sortDir === 'desc' ? 'asc' : 'desc');
     setSortCol(col);
     setSortDir(newDir);
-    fetchLeads(page);
+    fetchLeads(1, filters, col, newDir);
   }
 
   function handleSelectAll() {
@@ -252,8 +258,15 @@ export default function LeadsPage() {
             filters={filters}
             onChange={next => {
               setFilters(next);
-              fetchLeads(1, next);
+              fetchLeads(1, next, sortCol, sortDir);
             }}
+          />
+
+          {/* Quick Sort Dropdown */}
+          <SortDropdown
+            sortCol={sortCol}
+            sortDir={sortDir}
+            onChange={handleSort}
           />
 
           {/* Saved Views Button */}
