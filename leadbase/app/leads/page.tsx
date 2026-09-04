@@ -10,6 +10,7 @@ import ExportModal from './components/ExportModal';
 import ExportHistoryDrawer from './components/ExportHistoryDrawer';
 import ColumnVisibilityModal from './components/ColumnVisibilityModal';
 import EquipmentDropdown from './components/EquipmentDropdown';
+import StatusDropdown from './components/StatusDropdown';
 
 const PAGE_SIZE = 50;
 
@@ -236,6 +237,15 @@ export default function LeadsPage() {
             <span>⚙️ Filters</span>
             {activeFilterCount > 0 && <span className="crm-badge">{activeFilterCount}</span>}
           </button>
+
+          {/* Quick Status Filter (Active, Inactive, Pending, etc.) */}
+          <StatusDropdown
+            filters={filters}
+            onChange={next => {
+              setFilters(next);
+              fetchLeads(1, next);
+            }}
+          />
 
           {/* Quick Equipment Filter (Custom Dark Popover) */}
           <EquipmentDropdown

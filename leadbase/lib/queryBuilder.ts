@@ -59,23 +59,24 @@ export function buildCarrierQuery(
 
   // Status Filters
   if (filters.carrier_statuses && filters.carrier_statuses.length > 0) {
-    const clauses: string[] = [];
-    for (const s of filters.carrier_statuses) {
+    const formatted = filters.carrier_statuses.map(s => {
       const lower = s.toLowerCase();
-      if (lower === 'active') {
-        clauses.push('carrier_status.ilike.%Active%');
-      } else if (lower === 'inactive') {
-        clauses.push('carrier_status.ilike.%Inactive%');
-      } else if (lower === 'pending') {
-        clauses.push('carrier_status.ilike.%Pending%');
-      } else if (lower.includes('service') || lower.includes('out of service')) {
-        clauses.push('carrier_status.ilike.%Service%', 'out_of_service.eq.true');
+      if (lower === 'active') return 'Active';
+      if (lower === 'inactive') return 'Inactive';
+      if (lower === 'pending') return 'Pending';
+      if (lower.includes('service')) return 'Out of Service';
+      return s;
+    });
+
+    if (formatted.includes('Out of Service')) {
+      const otherStatuses = formatted.filter(s => s !== 'Out of Service');
+      if (otherStatuses.length > 0) {
+        q = q.or(`carrier_status.in.(${otherStatuses.join(',')}),carrier_status.eq.Out of Service,out_of_service.eq.true`);
       } else {
-        clauses.push(`carrier_status.ilike.%${s}%`);
+        q = q.or('carrier_status.eq.Out of Service,out_of_service.eq.true');
       }
-    }
-    if (clauses.length > 0) {
-      q = q.or(clauses.join(','));
+    } else {
+      q = q.in('carrier_status', formatted);
     }
   }
 
