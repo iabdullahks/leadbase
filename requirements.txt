@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+mangum
+supabase
+python-dotenv
+beautifulsoup4
+lxml

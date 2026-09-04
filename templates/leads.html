@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LeadBase — Carrier Intelligence Dashboard</title>
+  <meta name="description" content="Premium trucking leads dashboard — search, filter and export USDOT carrier data.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+
+<!-- ── Top Header ─────────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="brand">
+      <div class="brand-icon">🚛</div>
+      <div>
+        <div class="brand-name">LeadBase</div>
+        <div class="brand-sub">Carrier Intelligence</div>
+      </div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="live-badge"><span class="live-dot"></span> Live Database</div>
+    <button id="btn-export" class="btn-export" title="Export current filtered results as CSV">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Export CSV
+    </button>
+  </div>
+</header>
+
+<!-- ── Stats Bar ───────────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="stat-card" id="stat-total">
+    <div class="stat-icon stat-icon-blue">📊</div>
+    <div class="stat-body">
+      <div class="stat-value" id="s-total">—</div>
+      <div class="stat-label">Total Leads</div>
+    </div>
+  </div>
+  <div class="stat-card" id="stat-active">
+    <div class="stat-icon stat-icon-green">✅</div>
+    <div class="stat-body">
+      <div class="stat-value" id="s-active">—</div>
+      <div class="stat-label">Active Carriers</div>
+    </div>
+  </div>
+  <div class="stat-card" id="stat-phone">
+    <div class="stat-icon stat-icon-cyan">📞</div>
+    <div class="stat-body">
+      <div class="stat-value" id="s-phone">—</div>
+      <div class="stat-label">With Phone</div>
+    </div>
+  </div>
+  <div class="stat-card" id="stat-email">
+    <div class="stat-icon stat-icon-purple">✉️</div>
+    <div class="stat-body">
+      <div class="stat-value" id="s-email">—</div>
+      <div class="stat-label">With Email</div>
+    </div>
+  </div>
+  <div class="stat-card" id="stat-new">
+    <div class="stat-icon stat-icon-orange">🆕</div>
+    <div class="stat-body">
+      <div class="stat-value" id="s-new">—</div>
+      <div class="stat-label">Added Today</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main Layout ─────────────────────────────────────────────────────────── -->
+<div class="main-layout">
+
+  <!-- Filter Sidebar -->
+  <aside class="filter-panel" id="filter-panel">
+    <div class="filter-panel-header">
+      <h3>🔽 Filters</h3>
+      <button id="btn-clear-filters" class="btn-clear">Clear All</button>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">Search</label>
+      <div class="search-wrap">
+        <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="inp-search" class="inp-search" placeholder="Name, USDOT, phone, email…">
+        <button id="btn-clear-search" class="btn-clear-x" title="Clear search">✕</button>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">Carrier Status</label>
+      <div class="radio-group">
+        <label class="radio-opt"><input type="radio" name="status" value="all" checked> All</label>
+        <label class="radio-opt"><input type="radio" name="status" value="active"> Active</label>
+        <label class="radio-opt"><input type="radio" name="status" value="inactive"> Inactive</label>
+        <label class="radio-opt"><input type="radio" name="status" value="pending"> Pending</label>
+      </div>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">Contact Info</label>
+      <label class="toggle-opt"><input type="checkbox" id="chk-phone"> Has Phone Number</label>
+      <label class="toggle-opt"><input type="checkbox" id="chk-email"> Has Email Address</label>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">Date Added (From)</label>
+      <input type="date" id="inp-date-from" class="inp-date">
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">Date Added (To)</label>
+      <input type="date" id="inp-date-to" class="inp-date">
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">Sort By</label>
+      <select id="sel-sort" class="inp-select">
+        <option value="scraped_at">Date Added</option>
+        <option value="motus_entry_date">MOTUS Entry Date</option>
+        <option value="legal_name">Company Name</option>
+        <option value="usdot_number">USDOT Number</option>
+        <option value="carrier_status">Status</option>
+      </select>
+      <select id="sel-dir" class="inp-select" style="margin-top:0.5rem;">
+        <option value="desc">Newest First</option>
+        <option value="asc">Oldest First</option>
+      </select>
+    </div>
+
+    <button id="btn-apply" class="btn-apply">Apply Filters</button>
+
+    <div class="filter-result-count" id="filter-count">Showing all leads</div>
+  </aside>
+
+  <!-- Table Area -->
+  <div class="table-area">
+
+    <!-- Toolbar -->
+    <div class="table-toolbar">
+      <div class="toolbar-left">
+        <span id="result-label" class="result-label">Loading…</span>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-icon" id="btn-refresh" title="Refresh">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Table Container -->
+    <div class="leads-table-wrap" id="table-wrap">
+      <table class="leads-table" id="leads-table">
+        <thead>
+          <tr>
+            <th class="th-sort" data-sort="usdot_number">USDOT # <span class="sort-arrow">↕</span></th>
+            <th class="th-sort" data-sort="legal_name">Company Name <span class="sort-arrow">↕</span></th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th class="th-sort" data-sort="carrier_status">Status <span class="sort-arrow">↕</span></th>
+            <th class="th-sort" data-sort="motus_entry_date">Entry Date <span class="sort-arrow">↕</span></th>
+            <th class="th-sort" data-sort="scraped_at">Added <span class="sort-arrow">↕</span></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="leads-tbody">
+          <tr><td colspan="8" class="table-loading"><div class="spinner-ring"></div> Loading leads…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination-bar">
+      <button class="btn-page" id="btn-first" title="First page">«</button>
+      <button class="btn-page" id="btn-prev">‹ Prev</button>
+      <div class="page-numbers" id="page-numbers"></div>
+      <button class="btn-page" id="btn-next">Next ›</button>
+      <button class="btn-page" id="btn-last" title="Last page">»</button>
+      <div class="page-jump-group">
+        <span>Go to</span>
+        <input type="number" id="inp-jump" min="1" class="inp-jump">
+        <button id="btn-jump" class="btn-jump">Go</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Detail Drawer ───────────────────────────────────────────────────────── -->
+<div class="drawer-overlay" id="drawer-overlay"></div>
+<div class="detail-drawer" id="detail-drawer">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-title" id="drawer-name">—</div>
+      <div class="drawer-usdot" id="drawer-usdot">USDOT —</div>
+    </div>
+    <div class="drawer-header-right">
+      <span class="status-pill" id="drawer-status">—</span>
+      <button class="btn-drawer-close" id="btn-drawer-close">✕</button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-section">
+      <div class="drawer-section-title">Contact Information</div>
+      <div class="drawer-grid">
+        <div class="drawer-field">
+          <div class="drawer-field-label">Phone</div>
+          <div class="drawer-field-value" id="dr-phone">—</div>
+        </div>
+        <div class="drawer-field">
+          <div class="drawer-field-label">Email</div>
+          <div class="drawer-field-value" id="dr-email">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">Registration</div>
+      <div class="drawer-grid">
+        <div class="drawer-field">
+          <div class="drawer-field-label">USDOT Number</div>
+          <div class="drawer-field-value mono" id="dr-usdot">—</div>
+        </div>
+        <div class="drawer-field">
+          <div class="drawer-field-label">Carrier Status</div>
+          <div class="drawer-field-value" id="dr-status">—</div>
+        </div>
+        <div class="drawer-field">
+          <div class="drawer-field-label">Out of Service</div>
+          <div class="drawer-field-value" id="dr-oos">—</div>
+        </div>
+        <div class="drawer-field">
+          <div class="drawer-field-label">MOTUS Entry Date</div>
+          <div class="drawer-field-value" id="dr-entry">—</div>
+        </div>
+        <div class="drawer-field">
+          <div class="drawer-field-label">Last Updated</div>
+          <div class="drawer-field-value" id="dr-updated">—</div>
+        </div>
+        <div class="drawer-field">
+          <div class="drawer-field-label">Date Scraped</div>
+          <div class="drawer-field-value" id="dr-scraped">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-section">
+      <div class="drawer-section-title">Quick Actions</div>
+      <div class="drawer-actions">
+        <a id="dr-link-motus" href="#" target="_blank" class="btn-drawer-action btn-blue">
+          🔗 View on MOTUS
+        </a>
+        <a id="dr-link-phone" href="#" class="btn-drawer-action btn-green">
+          📞 Call
+        </a>
+        <a id="dr-link-email" href="#" class="btn-drawer-action btn-purple">
+          ✉️ Send Email
+        </a>
+        <button id="dr-btn-copy" class="btn-drawer-action btn-gray" onclick="copyLeadInfo()">
+          📋 Copy Info
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

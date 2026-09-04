@@ -1,0 +1,108 @@
+{
+  "runs": [
+    {
+      "started_at": "2026-06-16 13:37:01",
+      "completed_at": "2026-06-16 13:40:17",
+      "duration_seconds": 195.9,
+      "stats": {
+        "total": 32,
+        "unchanged": 7,
+        "updated": 0,
+        "new": 0,
+        "failed": 25,
+        "not_found": 0
+      }
+    },
+    {
+      "started_at": "2026-06-16 13:37:01",
+      "completed_at": "2026-06-16 13:40:25",
+      "duration_seconds": 203.9,
+      "stats": {
+        "total": 32,
+        "unchanged": 11,
+        "updated": 0,
+        "new": 0,
+        "failed": 21,
+        "not_found": 0
+      }
+    },
+    {
+      "started_at": "2026-06-16 13:37:01",
+      "completed_at": "2026-06-16 13:40:34",
+      "duration_seconds": 213.4,
+      "stats": {
+        "total": 32,
+        "unchanged": 10,
+        "updated": 0,
+        "new": 0,
+        "failed": 22,
+        "not_found": 0
+      }
+    },
+    {
+      "started_at": "2026-06-16 13:37:01",
+      "completed_at": "2026-06-16 13:40:43",
+      "duration_seconds": 221.6,
+      "stats": {
+        "total": 32,
+        "unchanged": 12,
+        "updated": 0,
+        "new": 0,
+        "failed": 20,
+        "not_found": 0
+      }
+    },
+    {
+      "started_at": "2026-06-16 13:52:26",
+      "completed_at": "2026-06-16 13:53:11",
+      "duration_seconds": 44.7,
+      "stats": {
+        "total": 32,
+        "unchanged": 3,
+        "updated": 0,
+        "new": 0,
+        "failed": 29,
+        "not_found": 0
+      }
+    },
+    {
+      "started_at": "2026-06-16 13:52:26",
+      "completed_at": "2026-06-16 13:53:11",
+      "duration_seconds": 45.7,
+      "stats": {
+        "total": 32,
+        "unchanged": 11,
+        "updated": 0,
+        "new": 0,
+        "failed": 21,
+        "not_found": 0
+      }
+    },
+    {
+      "started_at": "2026-06-16 14:35:35",
+      "completed_at": "2026-06-16 19:47:05",
+      "duration_seconds": 18689.4,
+      "stats": {
+        "total": 15009,
+        "unchanged": 28,
+        "updated": 6044,
+        "new": 0,
+        "failed": 8933,
+        "not_found": 4
+      }
+    },
+    {
+      "started_at": "2026-06-16 14:35:33",
+      "completed_at": "2026-06-16 19:48:24",
+      "duration_seconds": 18771.1,
+      "stats": {
+        "total": 15009,
+        "unchanged": 28,
+        "updated": 6080,
+        "new": 0,
+        "failed": 8900,
+        "not_found": 1
+      }
+    }
+  ]
+}

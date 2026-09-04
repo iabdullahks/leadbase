@@ -1,0 +1,15 @@
+.env*
+.venv/
+__pycache__/
+*.pyc
+*.csv
+*.log
+database.json
+*_data.json
+migrate_log.txt
+migrate_retry_log.txt
+temp_*_data.json
+.next/
+node_modules/
+.vercel
+

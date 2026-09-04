@@ -1,0 +1,2 @@
+-r requirements.txt
+scrapling[all]==0.4.9
