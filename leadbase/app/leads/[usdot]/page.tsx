@@ -20,13 +20,19 @@ function StatusPill({ status }: { status: string }) {
 export default async function LeadDetailPage({ params }: { params: Promise<{ usdot: string }> }) {
   const { usdot } = await params;
 
-  const { data: lead, error } = await supabaseAdmin
-    .from('carriers')
-    .select('*')
-    .eq('usdot_number', usdot)
-    .single();
+  let lead = null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('carriers')
+      .select('*')
+      .eq('usdot_number', usdot)
+      .single();
+    if (!error && data) lead = data;
+  } catch (e) {
+    console.error('Lead detail fetch error:', e);
+  }
 
-  if (error || !lead) notFound();
+  if (!lead) notFound();
 
   const c = lead as Carrier & Record<string, unknown>;
 
