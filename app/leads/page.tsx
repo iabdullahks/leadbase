@@ -1,413 +1,454 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import type { Carrier, LeadsResponse } from '@/lib/types';
+import type { Carrier, FilterState } from '@/lib/types';
+import { defaultFilterState } from '@/lib/queryBuilder';
+import FilterDrawer from './components/FilterDrawer';
+import FilterChips from './components/FilterChips';
+import SavedViewsModal from './components/SavedViewsModal';
+import ExportModal from './components/ExportModal';
+import ExportHistoryDrawer from './components/ExportHistoryDrawer';
+import ColumnVisibilityModal from './components/ColumnVisibilityModal';
 
 const PAGE_SIZE = 50;
 
-function fmt(n: number) { return n.toLocaleString(); }
-
 function formatDate(iso: string) {
-  if (!iso) return '';
-  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
-  catch { return iso; }
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return iso;
+  }
 }
 
 function formatDateFull(iso: string) {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-  catch { return iso; }
+  try {
+    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return iso;
+  }
 }
 
 function StatusPill({ status }: { status: string }) {
-  const s = status?.toLowerCase() ?? '';
+  const s = (status || '').toLowerCase();
   const cls = s === 'active' ? 'pill-active' : s === 'inactive' ? 'pill-inactive' : s === 'pending' ? 'pill-pending' : 'pill-other';
   return <span className={`pill ${cls}`}>{status || '?'}</span>;
 }
 
-function showToast(msg: string, type = '') {
-  const el = document.getElementById('toast');
-  if (!el) return;
-  el.textContent = msg;
-  el.className = `toast show ${type}`;
-  setTimeout(() => { el.classList.remove('show'); }, 3200);
-}
-
-// ── Drawer ────────────────────────────────────────────────────────────────────
-function Drawer({ lead, onClose }: { lead: Carrier | null; onClose: () => void }) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
-
-  const open = !!lead;
-
-  function copyInfo() {
-    if (!lead) return;
-    const text = [`Company: ${lead.legal_name}`, `USDOT: ${lead.usdot_number}`, `Phone: ${lead.phone}`, `Email: ${lead.email}`, `Status: ${lead.carrier_status}`, `Profile: ${lead.profile_url}`].join('\n');
-    navigator.clipboard.writeText(text).then(() => showToast('✅ Lead info copied!', 'ok'));
-  }
-
-  return (
-    <>
-      <div className={`overlay ${open ? 'open' : ''}`} onClick={onClose} />
-      <div className={`drawer ${open ? 'open' : ''}`}>
-        <div className="drawer-head">
-          <div>
-            <div className="drawer-title">{lead?.legal_name || '—'}</div>
-            <div className="drawer-usdot">USDOT {lead?.usdot_number}</div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            {lead && <StatusPill status={lead.carrier_status} />}
-            <button className="drawer-close" onClick={onClose}>✕</button>
-          </div>
-        </div>
-        {lead && (
-          <div className="drawer-body">
-            <div className="drawer-section">
-              <div className="drawer-section-title">Contact Information</div>
-              <div className="drawer-grid">
-                <div className="df">
-                  <div className="df-label">Phone</div>
-                  <div className="df-value">{lead.phone ? <a href={`tel:${lead.phone}`} style={{ color: 'var(--green)', textDecoration: 'none' }}>{lead.phone}</a> : '—'}</div>
-                </div>
-                <div className="df">
-                  <div className="df-label">Email</div>
-                  <div className="df-value" style={{ fontSize: '0.8rem' }}>{lead.email ? <a href={`mailto:${lead.email}`} style={{ color: 'var(--purple)', textDecoration: 'none' }}>{lead.email}</a> : '—'}</div>
-                </div>
-              </div>
-            </div>
-            <div className="drawer-section">
-              <div className="drawer-section-title">Registration Details</div>
-              <div className="drawer-grid">
-                <div className="df"><div className="df-label">USDOT Number</div><div className="df-value cyan">{lead.usdot_number}</div></div>
-                <div className="df"><div className="df-label">Status</div><div className="df-value"><StatusPill status={lead.carrier_status} /></div></div>
-                <div className="df"><div className="df-label">Out of Service</div><div className="df-value">{lead.out_of_service ? '⚠️ Yes' : '✅ No'}</div></div>
-                <div className="df"><div className="df-label">MOTUS Entry</div><div className="df-value">{formatDateFull(lead.motus_entry_date)}</div></div>
-                <div className="df"><div className="df-label">Last Updated</div><div className="df-value">{formatDateFull(lead.motus_last_updated)}</div></div>
-                <div className="df"><div className="df-label">Date Scraped</div><div className="df-value">{formatDateFull(lead.scraped_at)}</div></div>
-              </div>
-            </div>
-            <div className="drawer-section">
-              <div className="drawer-section-title">Quick Actions</div>
-              <div className="drawer-actions">
-                <a href={lead.profile_url || `https://motus.dot.gov/customer/${lead.usdot_number}/account`} target="_blank" rel="noreferrer" className="da-btn da-blue">🔗 View on MOTUS</a>
-                <a href={lead.phone ? `tel:${lead.phone}` : '#'} className={`da-btn da-green ${!lead.phone ? 'da-gray' : ''}`} style={!lead.phone ? { opacity: 0.4 } : {}}>📞 Call</a>
-                <a href={lead.email ? `mailto:${lead.email}` : '#'} className={`da-btn da-purple ${!lead.email ? 'da-gray' : ''}`} style={!lead.email ? { opacity: 0.4 } : {}}>✉️ Email</a>
-                <button onClick={copyInfo} className="da-btn da-gray">📋 Copy Info</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-// ── Main Leads Page ───────────────────────────────────────────────────────────
 export default function LeadsPage() {
-  const router = useRouter();
-  const sp = useSearchParams();
+  // Main data state
+  const [leads, setLeads] = useState<Carrier[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [loading, setLoading] = useState(true);
 
-  const [leads, setLeads]         = useState<Carrier[]>([]);
-  const [total, setTotal]         = useState(0);
-  const [page, setPage]           = useState(1);
-  const [pages, setPages]         = useState(1);
-  const [loading, setLoading]     = useState(true);
-  const [selectedLead, setSelected] = useState<Carrier | null>(null);
-  const [exporting, setExporting] = useState(false);
+  // Active Filter State
+  const [filters, setFilters] = useState<FilterState>(defaultFilterState());
+  const [sortCol, setSortCol] = useState('scraped_at');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  // Filter state
-  const [search,   setSearch]   = useState(sp.get('search')    ?? '');
-  const [status,   setStatus]   = useState(sp.get('status')    ?? 'all');
-  const [hasPhone, setHasPhone] = useState(sp.get('has_phone') === '1');
-  const [hasEmail, setHasEmail] = useState(sp.get('has_email') === '1');
-  const [dateFrom, setDateFrom] = useState(sp.get('date_from') ?? '');
-  const [dateTo,   setDateTo]   = useState(sp.get('date_to')   ?? '');
-  const [sortCol,  setSortCol]  = useState('scraped_at');
-  const [sortDir,  setSortDir]  = useState<'asc'|'desc'>('desc');
+  // Modals & Drawers state
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isSavedViewsOpen, setIsSavedViewsOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isColumnsOpen, setIsColumnsOpen] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Carrier | null>(null);
+
+  // Selection & Columns state
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  const [visibleCols, setVisibleCols] = useState<string[]>([
+    'usdot_number', 'legal_name', 'phone', 'email', 'carrier_status', 'motus_entry_date', 'scraped_at'
+  ]);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const buildParams = useCallback((pg = 1) => new URLSearchParams({
-    page: String(pg), sort: sortCol, dir: sortDir,
-    search, status,
-    has_phone: hasPhone ? '1' : '',
-    has_email: hasEmail ? '1' : '',
-    date_from: dateFrom, date_to: dateTo,
-  }), [search, status, hasPhone, hasEmail, dateFrom, dateTo, sortCol, sortDir]);
-
-  const fetchLeads = useCallback(async (pg = 1) => {
+  // Fetch leads from server
+  const fetchLeads = useCallback(async (pg = 1, currentFilters = filters) => {
     setLoading(true);
     try {
-      const res  = await fetch(`/api/leads?${buildParams(pg)}`);
-      const data: LeadsResponse = await res.json();
-      setLeads(data.leads ?? []);
-      setTotal(data.total ?? 0);
-      setPage(data.page ?? pg);
-      setPages(data.pages ?? 1);
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filters: currentFilters,
+          page: pg,
+          limit: PAGE_SIZE,
+          sort: sortCol,
+          dir: sortDir
+        })
+      });
+      const data = await res.json();
+      setLeads(data.leads || []);
+      setTotal(data.total || 0);
+      setPage(data.page || pg);
+      setPages(data.pages || 1);
     } catch (e) {
-      showToast('Failed to load leads', 'err');
+      console.error('Fetch leads error:', e);
     } finally {
       setLoading(false);
     }
-  }, [buildParams]);
+  }, [filters, sortCol, sortDir]);
 
-  useEffect(() => { fetchLeads(1); }, []);
-
-  // Init from URL params
   useEffect(() => {
-    if (sp.get('has_phone') === '1' || sp.get('has_email') === '1' || sp.get('status')) {
-      fetchLeads(1);
-    }
+    fetchLeads(1);
   }, []);
 
-  function applyFilters(pg = 1) {
-    setPage(1);
-    fetchLeads(pg);
+  function handleFilterApply(newFilters: FilterState) {
+    setFilters(newFilters);
+    setSelectedIds([]);
+    setSelectAllMatching(false);
+    fetchLeads(1, newFilters);
   }
 
-  function clearFilters() {
-    setSearch(''); setStatus('all'); setHasPhone(false); setHasEmail(false);
-    setDateFrom(''); setDateTo(''); setSortCol('scraped_at'); setSortDir('desc');
-    setTimeout(() => fetchLeads(1), 0);
+  function handleFilterReset() {
+    const clean = defaultFilterState();
+    setFilters(clean);
+    setSelectedIds([]);
+    setSelectAllMatching(false);
+    fetchLeads(1, clean);
+  }
+
+  function handleRemoveSingleFilter(key: keyof FilterState, val?: string) {
+    const next = { ...filters };
+    if (key === 'carrier_statuses') {
+      next.carrier_statuses = (next.carrier_statuses || []).filter(s => s !== val);
+    } else if (key === 'states') {
+      next.states = (next.states || []).filter(s => s !== val);
+    } else if (key === 'advanced_rules') {
+      next.advanced_rules = (next.advanced_rules || []).filter(r => r.id !== val);
+    } else {
+      delete (next as Record<string, unknown>)[key];
+    }
+    setFilters(next);
+    fetchLeads(1, next);
   }
 
   function handleSort(col: string) {
     const newDir = sortCol === col && sortDir === 'desc' ? 'asc' : 'desc';
-    setSortCol(col); setSortDir(newDir);
-    setTimeout(() => fetchLeads(1), 0);
+    setSortCol(col);
+    setSortDir(newDir);
+    setTimeout(() => fetchLeads(page), 0);
   }
 
-  function goPage(n: number) {
-    const p = Math.max(1, Math.min(pages, n));
-    setPage(p);
-    fetchLeads(p);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  function handleSelectPageRows(checked: boolean) {
+    if (checked) {
+      const pageIds = leads.map(l => l.usdot_number);
+      setSelectedIds(pageIds);
+    } else {
+      setSelectedIds([]);
+      setSelectAllMatching(false);
+    }
   }
 
-  async function doExport() {
-    setExporting(true);
-    try {
-      const res  = await fetch(`/api/export?${buildParams()}`);
-      const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url; a.download = `leads_${new Date().toISOString().slice(0,10)}.csv`;
-      a.click(); URL.revokeObjectURL(url);
-      showToast(`✅ ${fmt(total)} leads exported`, 'ok');
-    } catch { showToast('Export failed', 'err'); }
-    finally { setExporting(false); }
+  function handleToggleRow(usdot: string) {
+    if (selectedIds.includes(usdot)) {
+      setSelectedIds(selectedIds.filter(id => id !== usdot));
+      setSelectAllMatching(false);
+    } else {
+      setSelectedIds([...selectedIds, usdot]);
+    }
   }
 
-  // Page range for pagination
-  function pageRange(cur: number, tot: number): (number | '…')[] {
-    if (tot <= 7) return Array.from({ length: tot }, (_, i) => i + 1);
-    const r: (number | '…')[] = [1];
-    if (cur > 4) r.push('…');
-    for (let i = Math.max(2, cur - 2); i <= Math.min(tot - 1, cur + 2); i++) r.push(i);
-    if (cur < tot - 3) r.push('…');
-    r.push(tot);
-    return r;
-  }
+  const activeFilterCount =
+    (filters.global_search ? 1 : 0) +
+    (filters.usdot ? 1 : 0) +
+    (filters.company_name ? 1 : 0) +
+    (filters.carrier_statuses?.length || 0) +
+    (filters.has_phone !== null && filters.has_phone !== undefined ? 1 : 0) +
+    (filters.has_email !== null && filters.has_email !== undefined ? 1 : 0) +
+    (filters.states?.length || 0) +
+    (filters.city ? 1 : 0) +
+    (filters.date_preset && filters.date_preset !== 'all' ? 1 : 0) +
+    (filters.advanced_rules?.length || 0);
 
-  const sortArrow = (col: string) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ↕';
+  const isAllPageSelected = leads.length > 0 && leads.every(l => selectedIds.includes(l.usdot_number));
 
   return (
-    <>
-      <div className="leads-layout">
-        {/* Sidebar */}
-        <aside className="filter-sidebar">
-          <div className="filter-title">
-            <span>🔽 Filters</span>
-            <button className="btn-text-sm" onClick={clearFilters}>Clear All</button>
+    <div className="leads-page-container fade-up">
+      {/* Top Professional Toolbar (Linear/Attio/Clay Style) */}
+      <div className="crm-toolbar">
+        <div className="crm-tb-left">
+          {/* Global Quick Search */}
+          <div className="crm-search-box">
+            <span className="crm-search-icon">🔍</span>
+            <input
+              className="crm-search-input"
+              placeholder="Search company, USDOT, phone, email..."
+              value={filters.global_search || ''}
+              onChange={e => {
+                const val = e.target.value;
+                const next = { ...filters, global_search: val };
+                setFilters(next);
+                if (searchTimer.current) clearTimeout(searchTimer.current);
+                searchTimer.current = setTimeout(() => fetchLeads(1, next), 400);
+              }}
+            />
           </div>
 
-          <div className="fg">
-            <label className="fl">Search</label>
-            <div className="search-box">
-              <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input
-                className="inp inp-search"
-                placeholder="Name, USDOT, phone, email…"
-                value={search}
-                onChange={e => {
-                  setSearch(e.target.value);
-                  if (searchTimer.current) clearTimeout(searchTimer.current);
-                  searchTimer.current = setTimeout(() => applyFilters(1), 450);
-                }}
-                onKeyDown={e => e.key === 'Enter' && applyFilters(1)}
-              />
-            </div>
-          </div>
+          {/* Filters Button */}
+          <button
+            className={`crm-tb-btn ${activeFilterCount > 0 ? 'active' : ''}`}
+            onClick={() => setIsFilterOpen(true)}
+          >
+            <span>⚙️ Filters</span>
+            {activeFilterCount > 0 && <span className="crm-badge">{activeFilterCount}</span>}
+          </button>
 
-          <div className="fg">
-            <label className="fl">Status</label>
-            <div className="radio-group">
-              {['all','active','inactive','pending'].map(s => (
-                <label key={s} className="radio-item">
-                  <input type="radio" name="status" value={s} checked={status === s} onChange={() => { setStatus(s); setTimeout(() => applyFilters(1), 0); }} />
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </label>
-              ))}
-            </div>
-          </div>
+          {/* Saved Views Button */}
+          <button className="crm-tb-btn" onClick={() => setIsSavedViewsOpen(true)}>
+            <span>⭐ Saved Views</span>
+          </button>
+        </div>
 
-          <div className="fg">
-            <label className="fl">Contact Info</label>
-            <div className="check-group">
-              <label className="check-item">
-                <input type="checkbox" checked={hasPhone} onChange={e => { setHasPhone(e.target.checked); setTimeout(() => applyFilters(1), 0); }} />
-                Has Phone Number
-              </label>
-              <label className="check-item">
-                <input type="checkbox" checked={hasEmail} onChange={e => { setHasEmail(e.target.checked); setTimeout(() => applyFilters(1), 0); }} />
-                Has Email Address
-              </label>
-            </div>
-          </div>
+        <div className="crm-tb-right">
+          {/* Columns Selector */}
+          <button className="crm-tb-btn-icon" onClick={() => setIsColumnsOpen(true)} title="Columns">
+            👁️ Columns
+          </button>
 
-          <div className="fg">
-            <label className="fl">Date Added From</label>
-            <input type="date" className="inp" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-          </div>
+          {/* Export History */}
+          <button className="crm-tb-btn-icon" onClick={() => setIsHistoryOpen(true)} title="History">
+            📜 Audit Logs
+          </button>
 
-          <div className="fg">
-            <label className="fl">Date Added To</label>
-            <input type="date" className="inp" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-          </div>
-
-          <div className="fg">
-            <label className="fl">Sort By</label>
-            <select className="inp" value={sortCol} onChange={e => setSortCol(e.target.value)}>
-              <option value="scraped_at">Date Added</option>
-              <option value="motus_entry_date">MOTUS Entry</option>
-              <option value="legal_name">Company Name</option>
-              <option value="usdot_number">USDOT Number</option>
-              <option value="carrier_status">Status</option>
-            </select>
-            <select className="inp" style={{ marginTop: '0.4rem' }} value={sortDir} onChange={e => setSortDir(e.target.value as 'asc'|'desc')}>
-              <option value="desc">Newest First</option>
-              <option value="asc">Oldest First</option>
-            </select>
-          </div>
-
-          <button className="btn-apply" onClick={() => applyFilters(1)}>Apply Filters</button>
-
-          <div style={{ fontSize: '0.75rem', color: 'var(--muted)', textAlign: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border)' }}>
-            {fmt(total)} matching leads
-          </div>
-        </aside>
-
-        {/* Table area */}
-        <div className="table-container">
-          <div className="table-toolbar">
-            <span className="result-text">
-              {loading ? 'Loading…' : total > 0
-                ? <>Showing <strong>{fmt((page-1)*PAGE_SIZE+1)}–{fmt(Math.min(page*PAGE_SIZE,total))}</strong> of <strong>{fmt(total)}</strong> leads</>
-                : 'No leads found'}
-            </span>
-            <div className="toolbar-actions">
-              <button className="btn-icon-sm" onClick={() => fetchLeads(page)} title="Refresh">
-                <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-              </button>
-              <button className="btn-export" onClick={doExport} disabled={exporting}>
-                {exporting ? <><span className="spinner" style={{ width:14,height:14,borderWidth:2 }} /> Exporting…</> : <>
-                  <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                  Export CSV
-                </>}
-              </button>
-            </div>
-          </div>
-
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  {[
-                    { col: 'usdot_number', label: 'USDOT #' },
-                    { col: 'legal_name',   label: 'Company Name' },
-                    { col: null,           label: 'Phone' },
-                    { col: null,           label: 'Email' },
-                    { col: 'carrier_status', label: 'Status' },
-                    { col: 'motus_entry_date', label: 'Entry Date' },
-                    { col: 'scraped_at',   label: 'Added' },
-                    { col: null,           label: '' },
-                  ].map((h, i) => (
-                    <th
-                      key={i}
-                      className={`${h.col ? 'sortable' : ''} ${h.col === sortCol ? 'sort-active' : ''}`}
-                      onClick={() => h.col && handleSort(h.col)}
-                    >
-                      {h.label}{h.col ? sortArrow(h.col) : ''}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={8} className="table-msg">
-                    <span className="spinner" /> Loading leads…
-                  </td></tr>
-                ) : leads.length === 0 ? (
-                  <tr><td colSpan={8} className="table-msg">
-                    <div className="table-msg-icon">🔍</div>
-                    No leads match your filters
-                  </td></tr>
-                ) : leads.map(lead => (
-                  <tr key={lead.usdot_number} onClick={() => setSelected(lead)} style={{ cursor: 'pointer' }}>
-                    <td className="td-usdot">{lead.usdot_number}</td>
-                    <td className="td-name" title={lead.legal_name}>{lead.legal_name || '—'}</td>
-                    <td className="td-contact">
-                      {lead.phone
-                        ? <a href={`tel:${lead.phone}`} onClick={e => e.stopPropagation()}>{lead.phone}</a>
-                        : <span className="td-empty">—</span>}
-                    </td>
-                    <td className="td-contact" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {lead.email
-                        ? <a href={`mailto:${lead.email}`} onClick={e => e.stopPropagation()}>{lead.email}</a>
-                        : <span className="td-empty">—</span>}
-                    </td>
-                    <td><StatusPill status={lead.carrier_status} /></td>
-                    <td className="td-date">{formatDate(lead.motus_entry_date)}</td>
-                    <td className="td-date">{formatDate(lead.scraped_at)}</td>
-                    <td><button className="btn-view" onClick={e => { e.stopPropagation(); setSelected(lead); }}>View →</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {pages > 1 && (
-            <div className="pagination">
-              <button className="pg-btn" onClick={() => goPage(1)} disabled={page <= 1}>«</button>
-              <button className="pg-btn" onClick={() => goPage(page - 1)} disabled={page <= 1}>‹ Prev</button>
-              {pageRange(page, pages).map((n, i) =>
-                n === '…'
-                  ? <span key={`d${i}`} className="pg-dots">…</span>
-                  : <button key={n} className={`pg-btn ${n === page ? 'active' : ''}`} onClick={() => goPage(n as number)}>{n}</button>
-              )}
-              <button className="pg-btn" onClick={() => goPage(page + 1)} disabled={page >= pages}>Next ›</button>
-              <button className="pg-btn" onClick={() => goPage(pages)} disabled={page >= pages}>»</button>
-              <div className="pg-jump">
-                <span>Go to</span>
-                <input className="inp-jump" type="number" min={1} max={pages} id="pg-jump-inp"
-                  onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt((e.target as HTMLInputElement).value); if (!isNaN(v)) goPage(v); }}} />
-                <button className="btn-go" onClick={() => { const el = document.getElementById('pg-jump-inp') as HTMLInputElement; const v = parseInt(el?.value); if (!isNaN(v)) goPage(v); }}>Go</button>
-              </div>
-            </div>
-          )}
+          {/* Export Button */}
+          <button className="crm-tb-btn-export" onClick={() => setIsExportOpen(true)}>
+            📥 Export ({selectAllMatching ? total : selectedIds.length > 0 ? selectedIds.length : total})
+          </button>
         </div>
       </div>
 
-      {/* Drawer */}
-      <Drawer lead={selectedLead} onClose={() => setSelected(null)} />
+      {/* Active Filter Chips Bar */}
+      <FilterChips
+        filters={filters}
+        onRemoveFilter={handleRemoveSingleFilter}
+        onClearAll={handleFilterReset}
+        matchingCount={total}
+        totalCount={total}
+      />
 
-      {/* Toast */}
-      <div id="toast" className="toast" />
-    </>
+      {/* Bulk Selection Banner */}
+      {selectedIds.length > 0 && (
+        <div className="bulk-banner fade-up">
+          <span>
+            ☑ <strong>{selectedIds.length}</strong> carriers on this page selected.
+          </span>
+          {!selectAllMatching && total > leads.length && (
+            <button className="bulk-btn-link" onClick={() => setSelectAllMatching(true)}>
+              Select all <strong>{total.toLocaleString()}</strong> matching carriers across database
+            </button>
+          )}
+          {selectAllMatching && (
+            <span className="bulk-all-tag">
+              ✨ All {total.toLocaleString()} matching records selected for export
+            </span>
+          )}
+          <button className="bulk-btn-clear" onClick={() => { setSelectedIds([]); setSelectAllMatching(false); }}>
+            Clear Selection
+          </button>
+        </div>
+      )}
+
+      {/* Main Carrier Table */}
+      <div className="table-wrap-card">
+        <table className="crm-table">
+          <thead>
+            <tr>
+              <th style={{ width: '40px' }}>
+                <input
+                  type="checkbox"
+                  checked={isAllPageSelected}
+                  onChange={e => handleSelectPageRows(e.target.checked)}
+                />
+              </th>
+              {visibleCols.includes('usdot_number') && (
+                <th onClick={() => handleSort('usdot_number')} className="sortable">
+                  USDOT # {sortCol === 'usdot_number' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                </th>
+              )}
+              {visibleCols.includes('legal_name') && (
+                <th onClick={() => handleSort('legal_name')} className="sortable">
+                  Company Name {sortCol === 'legal_name' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                </th>
+              )}
+              {visibleCols.includes('phone') && <th>Phone</th>}
+              {visibleCols.includes('email') && <th>Email</th>}
+              {visibleCols.includes('carrier_status') && (
+                <th onClick={() => handleSort('carrier_status')} className="sortable">
+                  Status {sortCol === 'carrier_status' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                </th>
+              )}
+              {visibleCols.includes('motus_entry_date') && (
+                <th onClick={() => handleSort('motus_entry_date')} className="sortable">
+                  MOTUS Entry {sortCol === 'motus_entry_date' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                </th>
+              )}
+              {visibleCols.includes('scraped_at') && (
+                <th onClick={() => handleSort('scraped_at')} className="sortable">
+                  Date Added {sortCol === 'scraped_at' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                </th>
+              )}
+              <th style={{ width: '60px' }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={10} className="table-msg">
+                  <span className="spinner" /> Loading target carriers…
+                </td>
+              </tr>
+            ) : leads.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="table-msg">
+                  <div style={{ fontSize: '1.8rem', marginBottom: '0.4rem' }}>🔍</div>
+                  No carriers match your active filters
+                </td>
+              </tr>
+            ) : (
+              leads.map(lead => (
+                <tr
+                  key={lead.usdot_number}
+                  className={selectedIds.includes(lead.usdot_number) ? 'row-selected' : ''}
+                  onClick={() => setSelectedLead(lead)}
+                >
+                  <td onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(lead.usdot_number)}
+                      onChange={() => handleToggleRow(lead.usdot_number)}
+                    />
+                  </td>
+                  {visibleCols.includes('usdot_number') && <td className="td-usdot">{lead.usdot_number}</td>}
+                  {visibleCols.includes('legal_name') && (
+                    <td className="td-name" title={lead.legal_name}>
+                      {lead.legal_name || '—'}
+                    </td>
+                  )}
+                  {visibleCols.includes('phone') && (
+                    <td className="td-contact">
+                      {lead.phone ? (
+                        <a href={`tel:${lead.phone}`} onClick={e => e.stopPropagation()}>{lead.phone}</a>
+                      ) : (
+                        <span className="td-empty">—</span>
+                      )}
+                    </td>
+                  )}
+                  {visibleCols.includes('email') && (
+                    <td className="td-contact">
+                      {lead.email ? (
+                        <a href={`mailto:${lead.email}`} onClick={e => e.stopPropagation()}>{lead.email}</a>
+                      ) : (
+                        <span className="td-empty">—</span>
+                      )}
+                    </td>
+                  )}
+                  {visibleCols.includes('carrier_status') && (
+                    <td><StatusPill status={lead.carrier_status} /></td>
+                  )}
+                  {visibleCols.includes('motus_entry_date') && (
+                    <td className="td-date">{formatDate(lead.motus_entry_date)}</td>
+                  )}
+                  {visibleCols.includes('scraped_at') && (
+                    <td className="td-date">{formatDate(lead.scraped_at)}</td>
+                  )}
+                  <td>
+                    <button className="btn-view" onClick={e => { e.stopPropagation(); setSelectedLead(lead); }}>
+                      View →
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination Bar */}
+      {pages > 1 && (
+        <div className="crm-pagination">
+          <button className="pg-btn" onClick={() => fetchLeads(1)} disabled={page <= 1}>« First</button>
+          <button className="pg-btn" onClick={() => fetchLeads(page - 1)} disabled={page <= 1}>‹ Prev</button>
+          <span className="pg-info">Page <strong>{page}</strong> of <strong>{pages}</strong> ({total.toLocaleString()} total)</span>
+          <button className="pg-btn" onClick={() => fetchLeads(page + 1)} disabled={page >= pages}>Next ›</button>
+          <button className="pg-btn" onClick={() => fetchLeads(pages)} disabled={page >= pages}>Last »</button>
+        </div>
+      )}
+
+      {/* Drawers & Modals */}
+      <FilterDrawer
+        isOpen={isFilterOpen}
+        onClose={() => setIsFilterOpen(false)}
+        filters={filters}
+        onApply={handleFilterApply}
+        onReset={handleFilterReset}
+        totalCount={total}
+      />
+
+      <SavedViewsModal
+        isOpen={isSavedViewsOpen}
+        onClose={() => setIsSavedViewsOpen(false)}
+        currentFilters={filters}
+        onApplyView={handleFilterApply}
+      />
+
+      <ExportModal
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        filters={filters}
+        matchingCount={total}
+        selectedCount={selectedIds.length}
+        currentPageCount={leads.length}
+        selectedIds={selectedIds}
+      />
+
+      <ExportHistoryDrawer
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
+
+      <ColumnVisibilityModal
+        isOpen={isColumnsOpen}
+        onClose={() => setIsColumnsOpen(false)}
+        visibleCols={visibleCols}
+        onChange={setVisibleCols}
+      />
+
+      {/* Single Lead Detail Drawer */}
+      {selectedLead && (
+        <>
+          <div className="filter-overlay" onClick={() => setSelectedLead(null)} />
+          <div className="drawer open">
+            <div className="drawer-head">
+              <div>
+                <div className="drawer-title">{selectedLead.legal_name || '—'}</div>
+                <div className="drawer-usdot">USDOT {selectedLead.usdot_number}</div>
+              </div>
+              <button className="drawer-close" onClick={() => setSelectedLead(null)}>✕</button>
+            </div>
+            <div className="drawer-body">
+              <div className="drawer-section">
+                <div className="drawer-section-title">Contact Information</div>
+                <div className="drawer-grid">
+                  <div className="df"><div className="df-label">Phone</div><div className="df-value">{selectedLead.phone || '—'}</div></div>
+                  <div className="df"><div className="df-label">Email</div><div className="df-value">{selectedLead.email || '—'}</div></div>
+                </div>
+              </div>
+              <div className="drawer-section">
+                <div className="drawer-section-title">Details</div>
+                <div className="drawer-grid">
+                  <div className="df"><div className="df-label">Status</div><div className="df-value">{selectedLead.carrier_status}</div></div>
+                  <div className="df"><div className="df-label">Date Added</div><div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
