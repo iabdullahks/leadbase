@@ -73,6 +73,7 @@ export default function LeadsPage() {
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
         body: JSON.stringify({
           filters: currentFilters,
           page: pg,

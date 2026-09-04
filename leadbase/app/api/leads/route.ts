@@ -3,6 +3,9 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { buildCarrierQuery, defaultFilterState } from '@/lib/queryBuilder';
 import { FilterState } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const PAGE_SIZE = 50;
 
 export async function POST(req: NextRequest) {

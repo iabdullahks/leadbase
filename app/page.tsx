@@ -2,6 +2,9 @@ import { supabaseAdmin } from '@/lib/supabase';
 import type { Stats } from '@/lib/types';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 async function getStats(): Promise<Stats> {
   try {
     const [totalRes, activeRes, inactiveRes, phoneRes, emailRes, todayRes] = await Promise.all([
