@@ -127,6 +127,13 @@ export default function LeadsPage() {
     } else if (key === 'equipment_mode') {
       next.equipment_mode = 'both';
       next.equipment_types = (next.equipment_types || []).filter(e => e !== 'No Equipment');
+    } else if (key === 'usdot') {
+      delete next.usdot;
+      delete next.usdot_to;
+    } else if (key === 'date_preset') {
+      next.date_preset = 'all';
+      delete next.date_from;
+      delete next.date_to;
     } else if (key === 'advanced_rules') {
       next.advanced_rules = (next.advanced_rules || []).filter(r => r.id !== val);
     } else {
@@ -140,18 +147,38 @@ export default function LeadsPage() {
     const newDir = sortCol === col && sortDir === 'desc' ? 'asc' : 'desc';
     setSortCol(col);
     setSortDir(newDir);
-    setTimeout(() => fetchLeads(page), 0);
+    fetchLeads(page);
   }
 
-  function handleSelectPageRows(checked: boolean) {
+  function handleSelectAll() {
+    if (selectedIds.length === leads.length && leads.length > 0) {
+      setSelectedIds([]);
+      setSelectAllMatching(false);
+    } else {
+      setSelectedIds(leads.map(l => l.usdot_number));
+    }
+  }
+
+  function handleSelectAllDatabase() {
+    setSelectAllMatching(true);
+    setSelectedIds(leads.map(l => l.usdot_number));
+  }
+
+  function handleClearSelection() {
+    setSelectedIds([]);
+    setSelectAllMatching(false);
+  }
+
+  function handleToggleSelectAll(checked: boolean) {
     if (checked) {
-      const pageIds = leads.map(l => l.usdot_number);
-      setSelectedIds(pageIds);
+      setSelectedIds(leads.map(l => l.usdot_number));
     } else {
       setSelectedIds([]);
       setSelectAllMatching(false);
     }
   }
+
+  const handleSelectPageRows = handleToggleSelectAll;
 
   function handleToggleRow(usdot: string) {
     if (selectedIds.includes(usdot)) {
@@ -188,7 +215,7 @@ export default function LeadsPage() {
             <span className="crm-search-icon">🔍</span>
             <input
               className="crm-search-input"
-              placeholder="Search company, USDOT, phone, email..."
+              placeholder="Search legal name, DBA, DOT, phone, email..."
               value={filters.global_search || ''}
               onChange={e => {
                 const val = e.target.value;
@@ -235,7 +262,7 @@ export default function LeadsPage() {
               onChange={e => {
                 const val = e.target.value;
                 let next: FilterState;
-                if (val === 'both') {
+                if (val === 'both' || val === 'all') {
                   next = { ...filters, equipment_mode: 'both', equipment_types: [] };
                 } else if (val === 'no_equipment') {
                   next = { ...filters, equipment_mode: 'no_equipment', equipment_types: ['No Equipment'] };
@@ -248,14 +275,19 @@ export default function LeadsPage() {
                 fetchLeads(1, next);
               }}
             >
-              <option value="both">🚛 Equipment: Both (All)</option>
+              <option value="both">🚛 Equipment: All / Non-Filter</option>
               <option value="no_equipment">🚫 No Equipment</option>
               <option value="has_equipment">✅ Has Equipment</option>
               <option disabled>──────────────</option>
+              <option value="Power Only">⚡ Power Only</option>
+              <option value="Box Truck">📦 Box Truck</option>
+              <option value="Cargo Van">🚐 Cargo Van</option>
+              <option value="Hauler">🚗 Hauler (Car/Auto)</option>
+              <option value="Hotshot">🚀 Hotshot</option>
               <option value="Tractor">🚚 Tractor</option>
               <option value="Truck">🚛 Truck</option>
               <option value="Trailer">📦 Trailer</option>
-              <option value="Van">🚐 Van</option>
+              <option value="Van">🚐 Van / Dry Van</option>
               <option value="Flatbed">🏗️ Flatbed</option>
               <option value="Refrigerated (Reefer)">❄️ Refrigerated (Reefer)</option>
               <option value="Tanker">🛢️ Tanker</option>

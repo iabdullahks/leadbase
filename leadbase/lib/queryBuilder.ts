@@ -31,9 +31,22 @@ export function buildCarrierQuery(
   // Identification Filters
   if (filters.usdot?.trim()) {
     const v = filters.usdot.trim();
-    if (filters.id_match_type === 'exact') q = q.eq('usdot_number', v);
-    else if (filters.id_match_type === 'starts_with') q = q.ilike('usdot_number', `${v}%`);
-    else q = q.ilike('usdot_number', `%${v}%`);
+    if (filters.id_match_type === 'exact') {
+      q = q.eq('usdot_number', v);
+    } else if (filters.id_match_type === 'starts_from') {
+      // Starts from this USDOT number onwards to the end of the database
+      q = q.gte('usdot_number', v);
+    } else if (filters.id_match_type === 'range') {
+      q = q.gte('usdot_number', v);
+      if (filters.usdot_to?.trim()) {
+        q = q.lte('usdot_number', filters.usdot_to.trim());
+      }
+    } else if (filters.id_match_type === 'starts_with') {
+      q = q.ilike('usdot_number', `${v}%`);
+    } else {
+      // contains
+      q = q.ilike('usdot_number', `%${v}%`);
+    }
   }
 
   if (filters.company_name?.trim()) {
@@ -108,10 +121,18 @@ export function buildCarrierQuery(
   }
 
   // Equipment & Fleet Filters
-  const hasNoEquipment = filters.equipment_mode === 'no_equipment' || (filters.equipment_types || []).includes('No Equipment');
-  const isBoth = filters.equipment_mode === 'both' || filters.equipment_mode === 'all' || (!filters.equipment_mode && (!filters.equipment_types || filters.equipment_types.length === 0));
+  const hasNoEquipment =
+    filters.equipment_mode === 'no_equipment' ||
+    (filters.equipment_types || []).includes('No Equipment');
+  const isBothOrAll =
+    filters.equipment_mode === 'both' ||
+    filters.equipment_mode === 'all' ||
+    (filters.equipment_types || []).includes('All') ||
+    (filters.equipment_types || []).includes('All / Non-Filter') ||
+    (filters.equipment_types || []).includes('non- filter') ||
+    (!filters.equipment_mode && (!filters.equipment_types || filters.equipment_types.length === 0));
 
-  if (!isBoth) {
+  if (!isBothOrAll) {
     if (hasNoEquipment) {
       q = q.or('form_of_business.ilike.%Broker%,legal_name.ilike.%Broker%,legal_name.ilike.%Logistics%,carrier_status.eq.Inactive,out_of_service.eq.true');
     } else if (filters.equipment_mode === 'has_equipment') {
@@ -120,13 +141,47 @@ export function buildCarrierQuery(
   }
 
   if (filters.equipment_types && filters.equipment_types.length > 0) {
-    const validTypes = filters.equipment_types.filter(t => t !== 'No Equipment' && t !== 'Both');
+    const validTypes = filters.equipment_types.filter(
+      t => t !== 'No Equipment' && t !== 'Both' && t !== 'All' && t !== 'All / Non-Filter' && t !== 'non- filter'
+    );
     if (validTypes.length > 0) {
-      const orClauses = validTypes.map(t => {
-        const clean = t.replace(' (Reefer)', '').replace(' / Box Truck', '').replace(' / Dry Van', '');
-        return `legal_name.ilike.%${clean}%,dba_name.ilike.%${clean}%`;
-      }).join(',');
-      q = q.or(orClauses);
+      const clauses: string[] = [];
+      validTypes.forEach(t => {
+        const lower = t.toLowerCase();
+        if (lower.includes('power only') || lower.includes('poweronly')) {
+          clauses.push('legal_name.ilike.%Power Only%', 'dba_name.ilike.%Power Only%', 'legal_name.ilike.%PowerOnly%', 'dba_name.ilike.%PowerOnly%');
+        } else if (lower.includes('box truck') || lower.includes('boxtruck')) {
+          clauses.push('legal_name.ilike.%Box Truck%', 'dba_name.ilike.%Box Truck%', 'legal_name.ilike.%Boxtruck%', 'dba_name.ilike.%Boxtruck%');
+        } else if (lower.includes('cargo van') || lower.includes('sprinter')) {
+          clauses.push('legal_name.ilike.%Cargo Van%', 'dba_name.ilike.%Cargo Van%', 'legal_name.ilike.%Sprinter%', 'dba_name.ilike.%Sprinter%');
+        } else if (lower.includes('hauler') || lower.includes('car hauler') || lower.includes('auto hauler')) {
+          clauses.push('legal_name.ilike.%Hauler%', 'dba_name.ilike.%Hauler%', 'legal_name.ilike.%Auto Haul%', 'dba_name.ilike.%Auto Haul%');
+        } else if (lower.includes('hotshot') || lower.includes('hot shot')) {
+          clauses.push('legal_name.ilike.%Hotshot%', 'dba_name.ilike.%Hotshot%', 'legal_name.ilike.%Hot Shot%', 'dba_name.ilike.%Hot Shot%');
+        } else if (lower.includes('flatbed')) {
+          clauses.push('legal_name.ilike.%Flatbed%', 'dba_name.ilike.%Flatbed%', 'legal_name.ilike.%Flat Bed%');
+        } else if (lower.includes('reefer') || lower.includes('refrigerated')) {
+          clauses.push('legal_name.ilike.%Reefer%', 'dba_name.ilike.%Reefer%', 'legal_name.ilike.%Refrigerat%');
+        } else if (lower.includes('tanker')) {
+          clauses.push('legal_name.ilike.%Tanker%', 'dba_name.ilike.%Tanker%');
+        } else if (lower.includes('dump')) {
+          clauses.push('legal_name.ilike.%Dump Truck%', 'dba_name.ilike.%Dump%');
+        } else if (lower.includes('tractor')) {
+          clauses.push('legal_name.ilike.%Tractor%', 'dba_name.ilike.%Tractor%');
+        } else if (lower.includes('trailer')) {
+          clauses.push('legal_name.ilike.%Trailer%', 'dba_name.ilike.%Trailer%');
+        } else if (lower.includes('van')) {
+          clauses.push('legal_name.ilike.%Van%', 'dba_name.ilike.%Van%');
+        } else if (lower.includes('specialized')) {
+          clauses.push('legal_name.ilike.%Specialized%', 'dba_name.ilike.%Heavy Haul%');
+        } else {
+          const clean = t.replace(/[^a-zA-Z0-9]/g, '');
+          clauses.push(`legal_name.ilike.%${clean}%`, `dba_name.ilike.%${clean}%`);
+        }
+      });
+      if (clauses.length > 0) {
+        q = q.or(clauses.join(','));
+      }
     }
   }
 
@@ -139,10 +194,10 @@ export function buildCarrierQuery(
     let toDate: Date | null = null;
 
     if (filters.date_preset === 'today') {
-      fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
     } else if (filters.date_preset === 'yesterday') {
-      fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      toDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1, 0, 0, 0, 0));
+      toDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
     } else if (filters.date_preset === 'last_7d') {
       fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     } else if (filters.date_preset === 'last_30d') {
@@ -150,17 +205,23 @@ export function buildCarrierQuery(
     } else if (filters.date_preset === 'last_90d') {
       fromDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     } else if (filters.date_preset === 'this_month') {
-      fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
     } else if (filters.date_preset === 'last_month') {
-      fromDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      toDate = new Date(now.getFullYear(), now.getMonth(), 0);
+      fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1, 0, 0, 0, 0));
+      toDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0, 23, 59, 59, 999));
     }
 
     if (fromDate) q = q.gte(dateCol, fromDate.toISOString());
     if (toDate) q = q.lte(dateCol, toDate.toISOString());
-  } else if (filters.date_preset === 'custom' || filters.date_from || filters.date_to) {
-    if (filters.date_from) q = q.gte(dateCol, filters.date_from);
-    if (filters.date_to) q = q.lte(dateCol, filters.date_to + 'T23:59:59');
+  } else if (filters.date_preset === 'custom' || ((filters.date_from || filters.date_to) && filters.date_preset !== 'all')) {
+    if (filters.date_from?.trim()) {
+      const fromStr = filters.date_from.includes('T') ? filters.date_from : `${filters.date_from.trim()}T00:00:00.000Z`;
+      q = q.gte(dateCol, fromStr);
+    }
+    if (filters.date_to?.trim()) {
+      const toStr = filters.date_to.includes('T') ? filters.date_to : `${filters.date_to.trim()}T23:59:59.999Z`;
+      q = q.lte(dateCol, toStr);
+    }
   }
 
   // Data Quality Filters

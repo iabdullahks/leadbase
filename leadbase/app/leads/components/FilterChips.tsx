@@ -23,7 +23,15 @@ export default function FilterChips({
     chips.push({ key: 'global_search', label: `Search: "${filters.global_search.trim()}"` });
   }
   if (filters.usdot?.trim()) {
-    chips.push({ key: 'usdot', label: `USDOT: ${filters.usdot.trim()}` });
+    if (filters.id_match_type === 'starts_from') {
+      chips.push({ key: 'usdot', label: `USDOT: From ${filters.usdot.trim()} → End` });
+    } else if (filters.id_match_type === 'range') {
+      chips.push({ key: 'usdot', label: `USDOT: ${filters.usdot.trim()} → ${filters.usdot_to?.trim() || 'End'}` });
+    } else if (filters.id_match_type === 'starts_with') {
+      chips.push({ key: 'usdot', label: `USDOT: Prefix "${filters.usdot.trim()}"` });
+    } else {
+      chips.push({ key: 'usdot', label: `USDOT: ${filters.usdot.trim()}` });
+    }
   }
   if (filters.company_name?.trim()) {
     chips.push({ key: 'company_name', label: `Company: ${filters.company_name.trim()}` });
@@ -70,20 +78,23 @@ export default function FilterChips({
     chips.push({ key: 'equipment_mode', label: 'Equipment: Has Equipment', val: 'has_equipment' });
   }
 
-  (filters.equipment_types || []).filter(eq => eq !== 'No Equipment' && eq !== 'Both').forEach(eq => {
-    chips.push({ key: 'equipment_types', label: `Equipment: ${eq}`, val: eq });
-  });
+  (filters.equipment_types || [])
+    .filter(eq => eq !== 'No Equipment' && eq !== 'Both' && eq !== 'All / Non-Filter' && eq !== 'All' && eq !== 'non- filter')
+    .forEach(eq => {
+      chips.push({ key: 'equipment_types', label: `Equipment: ${eq}`, val: eq });
+    });
 
   if (filters.date_preset && filters.date_preset !== 'all') {
+    const fieldPrefix = filters.date_field === 'motus_entry_date' ? 'MOTUS Reg' : 'Added';
     const presetLabels: Record<string, string> = {
-      today: 'Added: Today',
-      yesterday: 'Added: Yesterday',
-      last_7d: 'Added: Last 7 Days',
-      last_30d: 'Added: Last 30 Days',
-      last_90d: 'Added: Last 90 Days',
-      this_month: 'Added: This Month',
-      last_month: 'Added: Last Month',
-      custom: `Date: ${filters.date_from || ''} → ${filters.date_to || ''}`
+      today: `${fieldPrefix}: Today`,
+      yesterday: `${fieldPrefix}: Yesterday`,
+      last_7d: `${fieldPrefix}: Last 7 Days`,
+      last_30d: `${fieldPrefix}: Last 30 Days`,
+      last_90d: `${fieldPrefix}: Last 90 Days`,
+      this_month: `${fieldPrefix}: This Month`,
+      last_month: `${fieldPrefix}: Last Month`,
+      custom: `${fieldPrefix}: ${filters.date_from || ''} → ${filters.date_to || ''}`
     };
     chips.push({ key: 'date_preset', label: presetLabels[filters.date_preset] || filters.date_preset });
   }

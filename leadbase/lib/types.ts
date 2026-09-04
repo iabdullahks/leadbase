@@ -52,7 +52,7 @@ export interface LeadsResponse {
 }
 
 export type NumericOperator = '=' | '>' | '<' | '>=' | '<=' | 'between';
-export type TextMatchOperator = 'contains' | 'exact' | 'starts_with';
+export type TextMatchOperator = 'contains' | 'exact' | 'starts_with' | 'starts_from' | 'range';
 
 export interface AdvancedRule {
   id: string;
@@ -66,6 +66,7 @@ export interface AdvancedRule {
 export interface FilterState {
   // Identification
   usdot?: string;
+  usdot_to?: string;
   mc_number?: string;
   legal_name?: string;
   dba_name?: string;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FilterState, AdvancedRule, TextMatchOperator, NumericOperator } from '@/lib/types';
 
 const US_STATES = [
@@ -18,8 +18,22 @@ const CARGO_TYPES = [
 ];
 
 const EQUIPMENT_TYPES = [
-  'Tractor', 'Truck', 'Trailer', 'Van', 'Flatbed',
-  'Refrigerated (Reefer)', 'Tanker', 'Dump Truck', 'Specialized', 'No Equipment', 'Both'
+  'All / Non-Filter',
+  'No Equipment',
+  'Power Only',
+  'Box Truck',
+  'Cargo Van',
+  'Hauler',
+  'Hotshot',
+  'Tractor',
+  'Truck',
+  'Trailer',
+  'Van / Dry Van',
+  'Flatbed',
+  'Refrigerated (Reefer)',
+  'Tanker',
+  'Dump Truck',
+  'Specialized'
 ];
 
 interface FilterDrawerProps {
@@ -40,22 +54,52 @@ export default function FilterDrawer({
   totalCount
 }: FilterDrawerProps) {
   const [draft, setDraft] = useState<FilterState>(filters);
+  const [previewCount, setPreviewCount] = useState<number | null>(totalCount);
+  const [isCounting, setIsCounting] = useState<boolean>(false);
+  const countTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [activeTab, setActiveTab] = useState<string>('ident');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     ident: true,
     status: true,
     contact: true,
     location: false,
-    fleet: false,
+    fleet: true,
     cargo: false,
-    dates: false,
+    dates: true,
     quality: false,
     advanced: false
   });
 
   useEffect(() => {
     setDraft(filters);
-  }, [filters, isOpen]);
+    setPreviewCount(totalCount);
+  }, [filters, isOpen, totalCount]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (countTimer.current) clearTimeout(countTimer.current);
+    setIsCounting(true);
+    countTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filters: draft, page: 1, limit: 1 })
+        });
+        const data = await res.json();
+        setPreviewCount(typeof data.total === 'number' ? data.total : null);
+      } catch (err) {
+        console.error('Preview count error:', err);
+      } finally {
+        setIsCounting(false);
+      }
+    }, 350);
+
+    return () => {
+      if (countTimer.current) clearTimeout(countTimer.current);
+    };
+  }, [draft, isOpen]);
 
   if (!isOpen) return null;
 
@@ -82,13 +126,23 @@ export default function FilterDrawer({
   }
 
   function toggleEquipment(eq: string) {
-    if (eq === 'Both') {
+    if (eq === 'All / Non-Filter' || eq === 'Both' || eq === 'all' || eq === 'non- filter') {
       setDraft({ ...draft, equipment_types: [], equipment_mode: 'both' });
       return;
     }
-    const list = draft.equipment_types || [];
+    if (eq === 'No Equipment') {
+      const isSelected = (draft.equipment_types || []).includes('No Equipment') || draft.equipment_mode === 'no_equipment';
+      if (isSelected) {
+        setDraft({ ...draft, equipment_types: [], equipment_mode: 'both' });
+      } else {
+        setDraft({ ...draft, equipment_types: ['No Equipment'], equipment_mode: 'no_equipment' });
+      }
+      return;
+    }
+
+    const list = (draft.equipment_types || []).filter(e => e !== 'No Equipment' && e !== 'Both' && e !== 'All / Non-Filter');
     const next = list.includes(eq) ? list.filter(e => e !== eq) : [...list, eq];
-    const mode = next.includes('No Equipment') ? 'no_equipment' : next.length > 0 ? 'has_equipment' : 'both';
+    const mode = next.length > 0 ? 'has_equipment' : 'both';
     setDraft({ ...draft, equipment_types: next, equipment_mode: mode });
   }
 
@@ -124,6 +178,8 @@ export default function FilterDrawer({
     onClose();
   }
 
+  const displayCount = previewCount !== null ? previewCount : totalCount;
+
   return (
     <>
       <div className="filter-overlay" onClick={onClose} />
@@ -132,7 +188,9 @@ export default function FilterDrawer({
         <div className="fp-head">
           <div className="fp-head-title">
             <span>⚙️ Advanced Carrier Filters</span>
-            <span className="fp-count-badge">{totalCount.toLocaleString()} matches</span>
+            <span className="fp-count-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+              {isCounting ? '⏳ Counting matches...' : `${displayCount.toLocaleString()} matches`}
+            </span>
           </div>
           <button className="fp-close" onClick={onClose}>✕</button>
         </div>
@@ -155,21 +213,51 @@ export default function FilterDrawer({
                       value={draft.id_match_type || 'contains'}
                       onChange={e => setDraft({ ...draft, id_match_type: e.target.value as TextMatchOperator })}
                     >
-                      <option value="contains">Contains</option>
-                      <option value="exact">Exact Match</option>
-                      <option value="starts_with">Starts With</option>
+                      <option value="starts_from">🚀 Starts From (≥ USDOT) — Continue to End</option>
+                      <option value="range">↔️ USDOT Range (From ... To ...)</option>
+                      <option value="starts_with">🔤 Starts With (Prefix e.g. 458...)</option>
+                      <option value="exact">🎯 Exact Match</option>
+                      <option value="contains">🔍 Contains</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="fp-label">USDOT Number</label>
-                    <input
-                      className="fp-input"
-                      placeholder="e.g. 4582560"
-                      value={draft.usdot || ''}
-                      onChange={e => setDraft({ ...draft, usdot: e.target.value })}
-                    />
-                  </div>
+                  {draft.id_match_type === 'range' ? (
+                    <div>
+                      <label className="fp-label">USDOT Number Range</label>
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                        <input
+                          className="fp-input"
+                          placeholder="From (e.g. 4582560)"
+                          value={draft.usdot || ''}
+                          onChange={e => setDraft({ ...draft, usdot: e.target.value })}
+                        />
+                        <span style={{ color: 'var(--text-muted)' }}>→</span>
+                        <input
+                          className="fp-input"
+                          placeholder="To USDOT"
+                          value={draft.usdot_to || ''}
+                          onChange={e => setDraft({ ...draft, usdot_to: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="fp-label">
+                        {draft.id_match_type === 'starts_from' ? 'USDOT Starting From (≥)' : 'USDOT Number'}
+                      </label>
+                      <input
+                        className="fp-input"
+                        placeholder={draft.id_match_type === 'starts_from' ? 'e.g. 4582560 (continues to end)' : 'e.g. 4582560'}
+                        value={draft.usdot || ''}
+                        onChange={e => setDraft({ ...draft, usdot: e.target.value })}
+                      />
+                    </div>
+                  )}
                 </div>
+                {draft.id_match_type === 'starts_from' && (
+                  <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.78rem', color: '#60a5fa' }}>
+                    💡 Showing all carriers starting from USDOT {draft.usdot?.trim() || '4582560'} onwards till the end of the database.
+                  </p>
+                )}
                 <div className="fp-row">
                   <label className="fp-label">Company / Legal Name</label>
                   <input
@@ -364,17 +452,41 @@ export default function FilterDrawer({
                   ) : null}
                 </div>
                 <div className="fp-states-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}>
-                  {EQUIPMENT_TYPES.map(eq => (
-                    <button
-                      key={eq}
-                      type="button"
-                      className={`fp-state-btn ${(draft.equipment_types || []).includes(eq) || (eq === 'Both' && (draft.equipment_mode === 'both' || !draft.equipment_mode)) || (eq === 'No Equipment' && draft.equipment_mode === 'no_equipment') ? 'active' : ''}`}
-                      style={{ padding: '0.4rem 0.5rem', fontSize: '0.76rem', textAlign: 'center', width: 'auto' }}
-                      onClick={() => toggleEquipment(eq)}
-                    >
-                      {eq === 'No Equipment' ? '🚫 ' + eq : eq === 'Both' ? '🔄 ' + eq : '🚚 ' + eq}
-                    </button>
-                  ))}
+                  {EQUIPMENT_TYPES.map(eq => {
+                    const isAll = eq === 'All / Non-Filter';
+                    const isNoEq = eq === 'No Equipment';
+                    const isSelected = isAll
+                      ? draft.equipment_mode === 'both' || !draft.equipment_mode || draft.equipment_mode === 'all'
+                      : isNoEq
+                      ? draft.equipment_mode === 'no_equipment' || (draft.equipment_types || []).includes('No Equipment')
+                      : (draft.equipment_types || []).includes(eq);
+
+                    let icon = '🚚';
+                    if (isAll) icon = '🔄';
+                    else if (isNoEq) icon = '🚫';
+                    else if (eq === 'Power Only') icon = '⚡';
+                    else if (eq === 'Box Truck') icon = '📦';
+                    else if (eq === 'Cargo Van') icon = '🚐';
+                    else if (eq === 'Hauler') icon = '🚗';
+                    else if (eq === 'Hotshot') icon = '🚀';
+                    else if (eq === 'Flatbed') icon = '🏗️';
+                    else if (eq === 'Refrigerated (Reefer)') icon = '❄️';
+                    else if (eq === 'Tanker') icon = '🛢️';
+                    else if (eq === 'Dump Truck') icon = '🚜';
+                    else if (eq === 'Specialized') icon = '⚙️';
+
+                    return (
+                      <button
+                        key={eq}
+                        type="button"
+                        className={`fp-state-btn ${isSelected ? 'active' : ''}`}
+                        style={{ padding: '0.45rem 0.5rem', fontSize: '0.76rem', textAlign: 'center', width: 'auto' }}
+                        onClick={() => toggleEquipment(eq)}
+                      >
+                        {icon} {eq}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -383,7 +495,7 @@ export default function FilterDrawer({
           {/* Section 6: Dates */}
           <div className="fp-section">
             <div className="fp-sec-header" onClick={() => toggleSection('dates')}>
-              <span>📅 5. Dates & Freshness</span>
+              <span>📅 6. Dates & Freshness</span>
               <span>{expandedSections.dates ? '−' : '+'}</span>
             </div>
             {expandedSections.dates && (
@@ -396,8 +508,8 @@ export default function FilterDrawer({
                       value={draft.date_field || 'scraped_at'}
                       onChange={e => setDraft({ ...draft, date_field: e.target.value as FilterState['date_field'] })}
                     >
-                      <option value="scraped_at">Date Added (Scraped)</option>
-                      <option value="motus_entry_date">MOTUS Entry Date</option>
+                      <option value="scraped_at">Date Added to LeadBase (Scraped Date)</option>
+                      <option value="motus_entry_date">MOTUS Entry Date (FMCSA Registration)</option>
                     </select>
                   </div>
                   <div>
@@ -405,9 +517,16 @@ export default function FilterDrawer({
                     <select
                       className="fp-select"
                       value={draft.date_preset || 'all'}
-                      onChange={e => setDraft({ ...draft, date_preset: e.target.value as FilterState['date_preset'] })}
+                      onChange={e => {
+                        const preset = e.target.value as FilterState['date_preset'];
+                        if (preset === 'all') {
+                          setDraft({ ...draft, date_preset: 'all', date_from: undefined, date_to: undefined });
+                        } else {
+                          setDraft({ ...draft, date_preset: preset });
+                        }
+                      }}
                     >
-                      <option value="all">All Time</option>
+                      <option value="all">All Time (No Date Filter)</option>
                       <option value="today">Today</option>
                       <option value="yesterday">Yesterday</option>
                       <option value="last_7d">Last 7 Days</option>
@@ -415,7 +534,7 @@ export default function FilterDrawer({
                       <option value="last_90d">Last 90 Days</option>
                       <option value="this_month">This Month</option>
                       <option value="last_month">Last Month</option>
-                      <option value="custom">Custom Range</option>
+                      <option value="custom">Custom Date Range</option>
                     </select>
                   </div>
                 </div>
@@ -445,28 +564,28 @@ export default function FilterDrawer({
             )}
           </div>
 
-          {/* Section 6: Advanced Condition Builder */}
+          {/* Section 7: Advanced Condition Builder */}
           <div className="fp-section">
             <div className="fp-sec-header" onClick={() => toggleSection('advanced')}>
-              <span>⚡ 6. Advanced Custom Rules</span>
+              <span>⚡ 7. Custom Logic Builder</span>
               <span>{expandedSections.advanced ? '−' : '+'}</span>
             </div>
             {expandedSections.advanced && (
               <div className="fp-sec-content">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-                  <span className="fp-label" style={{ marginBottom: 0 }}>Custom Logic Rules ({draft.advanced_rules?.length || 0})</span>
-                  <button className="fp-add-btn" onClick={addRule}>+ Add Rule</button>
+                  <label className="fp-label" style={{ marginBottom: 0 }}>Rules (Match ALL)</label>
+                  <button className="fp-link-btn" onClick={addRule}>+ Add Rule</button>
                 </div>
-                {draft.advanced_rules?.map((rule, idx) => (
+                {(draft.advanced_rules || []).map(rule => (
                   <div key={rule.id} className="fp-rule-row">
-                    {idx > 0 && <span className="fp-rule-and">AND</span>}
                     <select
                       className="fp-select-sm"
                       value={rule.field}
                       onChange={e => updateRule(rule.id, { field: e.target.value })}
                     >
                       <option value="legal_name">Legal Name</option>
-                      <option value="usdot_number">USDOT Number</option>
+                      <option value="dba_name">DBA Name</option>
+                      <option value="usdot_number">USDOT</option>
                       <option value="phone">Phone</option>
                       <option value="email">Email</option>
                       <option value="principal_address">Address</option>
@@ -502,7 +621,7 @@ export default function FilterDrawer({
         <div className="fp-foot">
           <button className="fp-btn-reset" onClick={handleReset}>Reset All</button>
           <button className="fp-btn-apply" onClick={handleApply}>
-            Apply Filters ({totalCount.toLocaleString()})
+            {isCounting ? 'Counting...' : `Apply Filters (${displayCount.toLocaleString()} matches)`}
           </button>
         </div>
       </div>
