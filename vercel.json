@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd leadbase && npm install && npm run build",
+  "outputDirectory": "leadbase/.next",
+  "framework": "nextjs"
+}
