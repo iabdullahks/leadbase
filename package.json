@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "cd leadbase && npm install && npm run build",
-    "start": "cd leadbase && npm run start"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",
