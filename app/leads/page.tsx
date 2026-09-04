@@ -9,6 +9,7 @@ import SavedViewsModal from './components/SavedViewsModal';
 import ExportModal from './components/ExportModal';
 import ExportHistoryDrawer from './components/ExportHistoryDrawer';
 import ColumnVisibilityModal from './components/ColumnVisibilityModal';
+import EquipmentDropdown from './components/EquipmentDropdown';
 
 const PAGE_SIZE = 50;
 
@@ -236,65 +237,14 @@ export default function LeadsPage() {
             {activeFilterCount > 0 && <span className="crm-badge">{activeFilterCount}</span>}
           </button>
 
-          {/* Quick Equipment Filter */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <select
-              className="crm-select"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid var(--border)',
-                color: 'var(--text)',
-                borderRadius: '8px',
-                padding: '0.45rem 0.75rem',
-                fontSize: '0.84rem',
-                cursor: 'pointer',
-                outline: 'none',
-              }}
-              value={
-                (filters.equipment_types || []).includes('No Equipment') || filters.equipment_mode === 'no_equipment'
-                  ? 'no_equipment'
-                  : (filters.equipment_types || []).length === 1
-                  ? filters.equipment_types[0]
-                  : filters.equipment_mode === 'has_equipment'
-                  ? 'has_equipment'
-                  : 'both'
-              }
-              onChange={e => {
-                const val = e.target.value;
-                let next: FilterState;
-                if (val === 'both' || val === 'all') {
-                  next = { ...filters, equipment_mode: 'both', equipment_types: [] };
-                } else if (val === 'no_equipment') {
-                  next = { ...filters, equipment_mode: 'no_equipment', equipment_types: ['No Equipment'] };
-                } else if (val === 'has_equipment') {
-                  next = { ...filters, equipment_mode: 'has_equipment', equipment_types: [] };
-                } else {
-                  next = { ...filters, equipment_mode: 'has_equipment', equipment_types: [val] };
-                }
-                setFilters(next);
-                fetchLeads(1, next);
-              }}
-            >
-              <option value="both">🚛 Equipment: All / Non-Filter</option>
-              <option value="no_equipment">🚫 No Equipment</option>
-              <option value="has_equipment">✅ Has Equipment</option>
-              <option disabled>──────────────</option>
-              <option value="Power Only">⚡ Power Only</option>
-              <option value="Box Truck">📦 Box Truck</option>
-              <option value="Cargo Van">🚐 Cargo Van</option>
-              <option value="Hauler">🚗 Hauler (Car/Auto)</option>
-              <option value="Hotshot">🚀 Hotshot</option>
-              <option value="Tractor">🚚 Tractor</option>
-              <option value="Truck">🚛 Truck</option>
-              <option value="Trailer">📦 Trailer</option>
-              <option value="Van">🚐 Van / Dry Van</option>
-              <option value="Flatbed">🏗️ Flatbed</option>
-              <option value="Refrigerated (Reefer)">❄️ Refrigerated (Reefer)</option>
-              <option value="Tanker">🛢️ Tanker</option>
-              <option value="Dump Truck">🚜 Dump Truck</option>
-              <option value="Specialized">⚙️ Specialized</option>
-            </select>
-          </div>
+          {/* Quick Equipment Filter (Custom Dark Popover) */}
+          <EquipmentDropdown
+            filters={filters}
+            onChange={next => {
+              setFilters(next);
+              fetchLeads(1, next);
+            }}
+          />
 
           {/* Saved Views Button */}
           <button className="crm-tb-btn" onClick={() => setIsSavedViewsOpen(true)}>
