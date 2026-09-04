@@ -63,6 +63,17 @@ export default function FilterChips({
     chips.push({ key: 'address', label: `Address: ${filters.address.trim()}` });
   }
 
+  // Equipment chips
+  if (filters.equipment_mode === 'no_equipment' || (filters.equipment_types || []).includes('No Equipment')) {
+    chips.push({ key: 'equipment_mode', label: 'Equipment: No Equipment', val: 'no_equipment' });
+  } else if (filters.equipment_mode === 'has_equipment') {
+    chips.push({ key: 'equipment_mode', label: 'Equipment: Has Equipment', val: 'has_equipment' });
+  }
+
+  (filters.equipment_types || []).filter(eq => eq !== 'No Equipment' && eq !== 'Both').forEach(eq => {
+    chips.push({ key: 'equipment_types', label: `Equipment: ${eq}`, val: eq });
+  });
+
   if (filters.date_preset && filters.date_preset !== 'all') {
     const presetLabels: Record<string, string> = {
       today: 'Added: Today',

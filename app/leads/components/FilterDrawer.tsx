@@ -19,7 +19,7 @@ const CARGO_TYPES = [
 
 const EQUIPMENT_TYPES = [
   'Tractor', 'Truck', 'Trailer', 'Van', 'Flatbed',
-  'Refrigerated (Reefer)', 'Tanker', 'Dump Truck', 'Specialized', 'Other'
+  'Refrigerated (Reefer)', 'Tanker', 'Dump Truck', 'Specialized', 'No Equipment', 'Both'
 ];
 
 interface FilterDrawerProps {
@@ -79,6 +79,17 @@ export default function FilterDrawer({
     const list = draft.cargo_types || [];
     const next = list.includes(cg) ? list.filter(c => c !== cg) : [...list, cg];
     setDraft({ ...draft, cargo_types: next });
+  }
+
+  function toggleEquipment(eq: string) {
+    if (eq === 'Both') {
+      setDraft({ ...draft, equipment_types: [], equipment_mode: 'both' });
+      return;
+    }
+    const list = draft.equipment_types || [];
+    const next = list.includes(eq) ? list.filter(e => e !== eq) : [...list, eq];
+    const mode = next.includes('No Equipment') ? 'no_equipment' : next.length > 0 ? 'has_equipment' : 'both';
+    setDraft({ ...draft, equipment_types: next, equipment_mode: mode });
   }
 
   function addRule() {
@@ -299,7 +310,77 @@ export default function FilterDrawer({
             )}
           </div>
 
-          {/* Section 5: Dates */}
+          {/* Section 5: Equipment & Fleet */}
+          <div className="fp-section">
+            <div className="fp-sec-header" onClick={() => toggleSection('fleet')}>
+              <span>🚛 5. Equipment Type & Fleet</span>
+              <span>{expandedSections.fleet ? '−' : '+'}</span>
+            </div>
+            {expandedSections.fleet && (
+              <div className="fp-sec-content">
+                {/* Equipment Status Filter (Option 2: Both / Has / None) */}
+                <div style={{ marginBottom: '0.8rem' }}>
+                  <label className="fp-label">Filter Option: Status</label>
+                  <div className="fp-grid-2">
+                    <label className={`fp-chip-check ${draft.equipment_mode === 'all' || !draft.equipment_mode || draft.equipment_mode === 'both' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="equipment_mode"
+                        checked={draft.equipment_mode === 'all' || !draft.equipment_mode || draft.equipment_mode === 'both'}
+                        onChange={() => setDraft({ ...draft, equipment_mode: 'both', equipment_types: draft.equipment_types?.filter(e => e !== 'No Equipment') || [] })}
+                      />
+                      🔄 Both (All Leads)
+                    </label>
+                    <label className={`fp-chip-check ${draft.equipment_mode === 'no_equipment' || (draft.equipment_types || []).includes('No Equipment') ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="equipment_mode"
+                        checked={draft.equipment_mode === 'no_equipment' || (draft.equipment_types || []).includes('No Equipment')}
+                        onChange={() => setDraft({ ...draft, equipment_mode: 'no_equipment', equipment_types: ['No Equipment'] })}
+                      />
+                      🚫 No Equipment
+                    </label>
+                  </div>
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <label className={`fp-chip-check ${draft.equipment_mode === 'has_equipment' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="equipment_mode"
+                        checked={draft.equipment_mode === 'has_equipment'}
+                        onChange={() => setDraft({ ...draft, equipment_mode: 'has_equipment', equipment_types: draft.equipment_types?.filter(e => e !== 'No Equipment') || [] })}
+                      />
+                      ✅ Has Equipment (Any Vehicle)
+                    </label>
+                  </div>
+                </div>
+
+                {/* Specific Equipment Names */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <label className="fp-label" style={{ marginBottom: 0 }}>
+                    Equipment Types ({draft.equipment_types?.length || 0})
+                  </label>
+                  {draft.equipment_types?.length ? (
+                    <button className="fp-link-btn" onClick={() => setDraft({ ...draft, equipment_types: [], equipment_mode: 'both' })}>Clear</button>
+                  ) : null}
+                </div>
+                <div className="fp-states-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}>
+                  {EQUIPMENT_TYPES.map(eq => (
+                    <button
+                      key={eq}
+                      type="button"
+                      className={`fp-state-btn ${(draft.equipment_types || []).includes(eq) || (eq === 'Both' && (draft.equipment_mode === 'both' || !draft.equipment_mode)) || (eq === 'No Equipment' && draft.equipment_mode === 'no_equipment') ? 'active' : ''}`}
+                      style={{ padding: '0.4rem 0.5rem', fontSize: '0.76rem', textAlign: 'center', width: 'auto' }}
+                      onClick={() => toggleEquipment(eq)}
+                    >
+                      {eq === 'No Equipment' ? '🚫 ' + eq : eq === 'Both' ? '🔄 ' + eq : '🚚 ' + eq}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section 6: Dates */}
           <div className="fp-section">
             <div className="fp-sec-header" onClick={() => toggleSection('dates')}>
               <span>📅 5. Dates & Freshness</span>

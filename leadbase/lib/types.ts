@@ -112,6 +112,7 @@ export interface FilterState {
   // Cargo & Equipment
   cargo_types: string[];
   equipment_types: string[];
+  equipment_mode?: 'all' | 'has_equipment' | 'no_equipment' | 'both';
 
   // Date Filters
   date_field?: 'scraped_at' | 'motus_entry_date' | 'added_to_motus' | 'motus_last_updated';

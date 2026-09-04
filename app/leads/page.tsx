@@ -119,6 +119,14 @@ export default function LeadsPage() {
       next.carrier_statuses = (next.carrier_statuses || []).filter(s => s !== val);
     } else if (key === 'states') {
       next.states = (next.states || []).filter(s => s !== val);
+    } else if (key === 'equipment_types') {
+      next.equipment_types = (next.equipment_types || []).filter(e => e !== val);
+      if (next.equipment_types.length === 0 && next.equipment_mode === 'has_equipment') {
+        next.equipment_mode = 'both';
+      }
+    } else if (key === 'equipment_mode') {
+      next.equipment_mode = 'both';
+      next.equipment_types = (next.equipment_types || []).filter(e => e !== 'No Equipment');
     } else if (key === 'advanced_rules') {
       next.advanced_rules = (next.advanced_rules || []).filter(r => r.id !== val);
     } else {
@@ -164,6 +172,8 @@ export default function LeadsPage() {
     (filters.states?.length || 0) +
     (filters.city ? 1 : 0) +
     (filters.date_preset && filters.date_preset !== 'all' ? 1 : 0) +
+    (filters.equipment_types?.length || 0) +
+    (filters.equipment_mode && filters.equipment_mode !== 'both' && filters.equipment_mode !== 'all' ? 1 : 0) +
     (filters.advanced_rules?.length || 0);
 
   const isAllPageSelected = leads.length > 0 && leads.every(l => selectedIds.includes(l.usdot_number));
@@ -198,6 +208,61 @@ export default function LeadsPage() {
             <span>⚙️ Filters</span>
             {activeFilterCount > 0 && <span className="crm-badge">{activeFilterCount}</span>}
           </button>
+
+          {/* Quick Equipment Filter */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <select
+              className="crm-select"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+                borderRadius: '8px',
+                padding: '0.45rem 0.75rem',
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+              value={
+                (filters.equipment_types || []).includes('No Equipment') || filters.equipment_mode === 'no_equipment'
+                  ? 'no_equipment'
+                  : (filters.equipment_types || []).length === 1
+                  ? filters.equipment_types[0]
+                  : filters.equipment_mode === 'has_equipment'
+                  ? 'has_equipment'
+                  : 'both'
+              }
+              onChange={e => {
+                const val = e.target.value;
+                let next: FilterState;
+                if (val === 'both') {
+                  next = { ...filters, equipment_mode: 'both', equipment_types: [] };
+                } else if (val === 'no_equipment') {
+                  next = { ...filters, equipment_mode: 'no_equipment', equipment_types: ['No Equipment'] };
+                } else if (val === 'has_equipment') {
+                  next = { ...filters, equipment_mode: 'has_equipment', equipment_types: [] };
+                } else {
+                  next = { ...filters, equipment_mode: 'has_equipment', equipment_types: [val] };
+                }
+                setFilters(next);
+                fetchLeads(1, next);
+              }}
+            >
+              <option value="both">🚛 Equipment: Both (All)</option>
+              <option value="no_equipment">🚫 No Equipment</option>
+              <option value="has_equipment">✅ Has Equipment</option>
+              <option disabled>──────────────</option>
+              <option value="Tractor">🚚 Tractor</option>
+              <option value="Truck">🚛 Truck</option>
+              <option value="Trailer">📦 Trailer</option>
+              <option value="Van">🚐 Van</option>
+              <option value="Flatbed">🏗️ Flatbed</option>
+              <option value="Refrigerated (Reefer)">❄️ Refrigerated (Reefer)</option>
+              <option value="Tanker">🛢️ Tanker</option>
+              <option value="Dump Truck">🚜 Dump Truck</option>
+              <option value="Specialized">⚙️ Specialized</option>
+            </select>
+          </div>
 
           {/* Saved Views Button */}
           <button className="crm-tb-btn" onClick={() => setIsSavedViewsOpen(true)}>

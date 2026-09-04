@@ -107,6 +107,29 @@ export function buildCarrierQuery(
     q = q.in('form_of_business', filters.form_of_business);
   }
 
+  // Equipment & Fleet Filters
+  const hasNoEquipment = filters.equipment_mode === 'no_equipment' || (filters.equipment_types || []).includes('No Equipment');
+  const isBoth = filters.equipment_mode === 'both' || filters.equipment_mode === 'all' || (!filters.equipment_mode && (!filters.equipment_types || filters.equipment_types.length === 0));
+
+  if (!isBoth) {
+    if (hasNoEquipment) {
+      q = q.or('form_of_business.ilike.%Broker%,legal_name.ilike.%Broker%,legal_name.ilike.%Logistics%,carrier_status.eq.Inactive,out_of_service.eq.true');
+    } else if (filters.equipment_mode === 'has_equipment') {
+      q = q.eq('carrier_status', 'Active').eq('out_of_service', false);
+    }
+  }
+
+  if (filters.equipment_types && filters.equipment_types.length > 0) {
+    const validTypes = filters.equipment_types.filter(t => t !== 'No Equipment' && t !== 'Both');
+    if (validTypes.length > 0) {
+      const orClauses = validTypes.map(t => {
+        const clean = t.replace(' (Reefer)', '').replace(' / Box Truck', '').replace(' / Dry Van', '');
+        return `legal_name.ilike.%${clean}%,dba_name.ilike.%${clean}%`;
+      }).join(',');
+      q = q.or(orClauses);
+    }
+  }
+
   // Date Filters
   const dateCol = filters.date_field || 'scraped_at';
   const now = new Date();

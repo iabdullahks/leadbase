@@ -119,6 +119,14 @@ export default function LeadsPage() {
       next.carrier_statuses = (next.carrier_statuses || []).filter(s => s !== val);
     } else if (key === 'states') {
       next.states = (next.states || []).filter(s => s !== val);
+    } else if (key === 'equipment_types') {
+      next.equipment_types = (next.equipment_types || []).filter(e => e !== val);
+      if (next.equipment_types.length === 0 && next.equipment_mode === 'has_equipment') {
+        next.equipment_mode = 'both';
+      }
+    } else if (key === 'equipment_mode') {
+      next.equipment_mode = 'both';
+      next.equipment_types = (next.equipment_types || []).filter(e => e !== 'No Equipment');
     } else if (key === 'advanced_rules') {
       next.advanced_rules = (next.advanced_rules || []).filter(r => r.id !== val);
     } else {
@@ -164,6 +172,8 @@ export default function LeadsPage() {
     (filters.states?.length || 0) +
     (filters.city ? 1 : 0) +
     (filters.date_preset && filters.date_preset !== 'all' ? 1 : 0) +
+    (filters.equipment_types?.length || 0) +
+    (filters.equipment_mode && filters.equipment_mode !== 'both' && filters.equipment_mode !== 'all' ? 1 : 0) +
     (filters.advanced_rules?.length || 0);
 
   const isAllPageSelected = leads.length > 0 && leads.every(l => selectedIds.includes(l.usdot_number));
@@ -198,6 +208,61 @@ export default function LeadsPage() {
             <span>⚙️ Filters</span>
             {activeFilterCount > 0 && <span className="crm-badge">{activeFilterCount}</span>}
           </button>
+
+          {/* Quick Equipment Filter */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <select
+              className="crm-select"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+                borderRadius: '8px',
+                padding: '0.45rem 0.75rem',
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+              value={
+                (filters.equipment_types || []).includes('No Equipment') || filters.equipment_mode === 'no_equipment'
+                  ? 'no_equipment'
+                  : (filters.equipment_types || []).length === 1
+                  ? filters.equipment_types[0]
+                  : filters.equipment_mode === 'has_equipment'
+                  ? 'has_equipment'
+                  : 'both'
+              }
+              onChange={e => {
+                const val = e.target.value;
+                let next: FilterState;
+                if (val === 'both') {
+                  next = { ...filters, equipment_mode: 'both', equipment_types: [] };
+                } else if (val === 'no_equipment') {
+                  next = { ...filters, equipment_mode: 'no_equipment', equipment_types: ['No Equipment'] };
+                } else if (val === 'has_equipment') {
+                  next = { ...filters, equipment_mode: 'has_equipment', equipment_types: [] };
+                } else {
+                  next = { ...filters, equipment_mode: 'has_equipment', equipment_types: [val] };
+                }
+                setFilters(next);
+                fetchLeads(1, next);
+              }}
+            >
+              <option value="both">🚛 Equipment: Both (All)</option>
+              <option value="no_equipment">🚫 No Equipment</option>
+              <option value="has_equipment">✅ Has Equipment</option>
+              <option disabled>──────────────</option>
+              <option value="Tractor">🚚 Tractor</option>
+              <option value="Truck">🚛 Truck</option>
+              <option value="Trailer">📦 Trailer</option>
+              <option value="Van">🚐 Van</option>
+              <option value="Flatbed">🏗️ Flatbed</option>
+              <option value="Refrigerated (Reefer)">❄️ Refrigerated (Reefer)</option>
+              <option value="Tanker">🛢️ Tanker</option>
+              <option value="Dump Truck">🚜 Dump Truck</option>
+              <option value="Specialized">⚙️ Specialized</option>
+            </select>
+          </div>
 
           {/* Saved Views Button */}
           <button className="crm-tb-btn" onClick={() => setIsSavedViewsOpen(true)}>
@@ -324,25 +389,27 @@ export default function LeadsPage() {
                       onChange={() => handleToggleRow(lead.usdot_number)}
                     />
                   </td>
-                  {visibleCols.includes('usdot_number') && <td className="td-usdot">{lead.usdot_number}</td>}
+                  {visibleCols.includes('usdot_number') && <td><span className="td-usdot">{lead.usdot_number}</span></td>}
                   {visibleCols.includes('legal_name') && (
-                    <td className="td-name" title={lead.legal_name}>
-                      {lead.legal_name || '—'}
+                    <td>
+                      <span className="td-name" title={lead.legal_name}>
+                        {lead.legal_name || '—'}
+                      </span>
                     </td>
                   )}
                   {visibleCols.includes('phone') && (
-                    <td className="td-contact">
+                    <td>
                       {lead.phone ? (
-                        <a href={`tel:${lead.phone}`} onClick={e => e.stopPropagation()}>{lead.phone}</a>
+                        <a href={`tel:${lead.phone}`} className="td-tel" onClick={e => e.stopPropagation()}>{lead.phone}</a>
                       ) : (
                         <span className="td-empty">—</span>
                       )}
                     </td>
                   )}
                   {visibleCols.includes('email') && (
-                    <td className="td-contact">
+                    <td>
                       {lead.email ? (
-                        <a href={`mailto:${lead.email}`} onClick={e => e.stopPropagation()}>{lead.email}</a>
+                        <a href={`mailto:${lead.email}`} className="td-email" onClick={e => e.stopPropagation()}>{lead.email}</a>
                       ) : (
                         <span className="td-empty">—</span>
                       )}
@@ -432,18 +499,49 @@ export default function LeadsPage() {
               <button className="drawer-close" onClick={() => setSelectedLead(null)}>✕</button>
             </div>
             <div className="drawer-body">
+              {/* Quick Actions */}
+              {(selectedLead.phone || selectedLead.email) && (
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  {selectedLead.phone && (
+                    <a href={`tel:${selectedLead.phone}`} className="drawer-action-link dlink-green">
+                      📞 {selectedLead.phone}
+                    </a>
+                  )}
+                  {selectedLead.email && (
+                    <a href={`mailto:${selectedLead.email}`} className="drawer-action-link dlink-purple">
+                      ✉️ {selectedLead.email}
+                    </a>
+                  )}
+                  <a
+                    href={`/leads/${selectedLead.usdot_number}`}
+                    className="drawer-action-link dlink-blue"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    🔗 Full Profile
+                  </a>
+                </div>
+              )}
+
               <div className="drawer-section">
                 <div className="drawer-section-title">Contact Information</div>
                 <div className="drawer-grid">
-                  <div className="df"><div className="df-label">Phone</div><div className="df-value">{selectedLead.phone || '—'}</div></div>
-                  <div className="df"><div className="df-label">Email</div><div className="df-value">{selectedLead.email || '—'}</div></div>
+                  <div className="df"><div className="df-label">Phone</div><div className="df-value" style={{ color: selectedLead.phone ? 'var(--green-bright,#34d399)' : 'var(--muted)' }}>{selectedLead.phone || '—'}</div></div>
+                  <div className="df"><div className="df-label">Email</div><div className="df-value" style={{ color: selectedLead.email ? 'var(--purple)' : 'var(--muted)', fontSize: '0.78rem' }}>{selectedLead.email || '—'}</div></div>
                 </div>
               </div>
               <div className="drawer-section">
-                <div className="drawer-section-title">Details</div>
+                <div className="drawer-section-title">Status & Registration</div>
                 <div className="drawer-grid">
-                  <div className="df"><div className="df-label">Status</div><div className="df-value">{selectedLead.carrier_status}</div></div>
-                  <div className="df"><div className="df-label">Date Added</div><div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div></div>
+                  <div className="df"><div className="df-label">Status</div><div className="df-value"><StatusPill status={selectedLead.carrier_status} /></div></div>
+                  <div className="df"><div className="df-label">USDOT</div><div className="df-value" style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--cyan)', fontSize: '0.78rem' }}>{selectedLead.usdot_number}</div></div>
+                </div>
+              </div>
+              <div className="drawer-section">
+                <div className="drawer-section-title">Timeline</div>
+                <div className="drawer-grid">
+                  <div className="df"><div className="df-label">MOTUS Entry</div><div className="df-value">{formatDate(selectedLead.motus_entry_date)}</div></div>
+                  <div className="df"><div className="df-label">Date Scraped</div><div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div></div>
                 </div>
               </div>
             </div>
