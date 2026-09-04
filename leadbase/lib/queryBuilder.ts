@@ -33,19 +33,13 @@ export function buildCarrierQuery(
     const v = filters.usdot.trim();
     if (filters.id_match_type === 'exact') {
       q = q.eq('usdot_number', v);
-    } else if (filters.id_match_type === 'starts_from') {
-      // Starts from this USDOT number onwards to the end of the database
-      q = q.gte('usdot_number', v);
-    } else if (filters.id_match_type === 'range') {
-      q = q.gte('usdot_number', v);
-      if (filters.usdot_to?.trim()) {
-        q = q.lte('usdot_number', filters.usdot_to.trim());
-      }
-    } else if (filters.id_match_type === 'starts_with') {
-      q = q.ilike('usdot_number', `${v}%`);
-    } else {
-      // contains
+    } else if (filters.id_match_type === 'contains') {
       q = q.ilike('usdot_number', `%${v}%`);
+    } else {
+      // Default: 'starts_with' (Prefix match: e.g. 458260% or 4582560%)
+      // This matches all leads starting with the given prefix (458260...) and guarantees
+      // that unrelated numbers like 96466 are NEVER returned.
+      q = q.ilike('usdot_number', `${v}%`);
     }
   }
 
@@ -65,14 +59,24 @@ export function buildCarrierQuery(
 
   // Status Filters
   if (filters.carrier_statuses && filters.carrier_statuses.length > 0) {
-    // Standardize capitalization (Active, Inactive, Pending, Out of Service)
-    const formatted = filters.carrier_statuses.map(s => {
-      if (s.toLowerCase() === 'active') return 'Active';
-      if (s.toLowerCase() === 'inactive') return 'Inactive';
-      if (s.toLowerCase() === 'pending') return 'Pending';
-      return s;
-    });
-    q = q.in('carrier_status', formatted);
+    const clauses: string[] = [];
+    for (const s of filters.carrier_statuses) {
+      const lower = s.toLowerCase();
+      if (lower === 'active') {
+        clauses.push('carrier_status.ilike.%Active%');
+      } else if (lower === 'inactive') {
+        clauses.push('carrier_status.ilike.%Inactive%');
+      } else if (lower === 'pending') {
+        clauses.push('carrier_status.ilike.%Pending%');
+      } else if (lower.includes('service') || lower.includes('out of service')) {
+        clauses.push('carrier_status.ilike.%Service%', 'out_of_service.eq.true');
+      } else {
+        clauses.push(`carrier_status.ilike.%${s}%`);
+      }
+    }
+    if (clauses.length > 0) {
+      q = q.or(clauses.join(','));
+    }
   }
 
   // Contact Info Filters
@@ -92,7 +96,7 @@ export function buildCarrierQuery(
     if (filters.contact_completeness === 'phone_email') {
       q = q.neq('phone', '').not('phone', 'is', null).neq('email', '').not('email', 'is', null);
     } else if (filters.contact_completeness === 'any') {
-      q = q.or('phone.neq.,email.neq.');
+      q = q.or('and(phone.neq.,phone.not.is.null),and(email.neq.,email.not.is.null)');
     } else if (filters.contact_completeness === 'none') {
       q = q.or('phone.eq.,phone.is.null').or('email.eq.,email.is.null');
     }
@@ -100,9 +104,11 @@ export function buildCarrierQuery(
 
   // Location Filters (States / Cities / Address)
   if (filters.states && filters.states.length > 0) {
-    // Match state in state_incorporated OR extracted state code from principal_address
+    // Check both state_incorporated AND principal_address so no leads are missed!
     const stateList = filters.states.map(s => s.toUpperCase());
-    q = q.in('state_incorporated', stateList);
+    const incPart = `state_incorporated.in.(${stateList.join(',')})`;
+    const addrParts = stateList.map(st => `principal_address.ilike."%, ${st},%"`);
+    q = q.or(`${incPart},${addrParts.join(',')}`);
   }
 
   if (filters.city?.trim()) {

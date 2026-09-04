@@ -210,52 +210,29 @@ export default function FilterDrawer({
                     <label className="fp-label">Match Type</label>
                     <select
                       className="fp-select"
-                      value={draft.id_match_type || 'contains'}
+                      value={draft.id_match_type || 'starts_with'}
                       onChange={e => setDraft({ ...draft, id_match_type: e.target.value as TextMatchOperator })}
                     >
-                      <option value="starts_from">🚀 Starts From (≥ USDOT) — Continue to End</option>
-                      <option value="range">↔️ USDOT Range (From ... To ...)</option>
-                      <option value="starts_with">🔤 Starts With (Prefix e.g. 458...)</option>
+                      <option value="starts_with">🔤 Starts With (Prefix e.g. 458260...) — Default</option>
                       <option value="exact">🎯 Exact Match</option>
                       <option value="contains">🔍 Contains</option>
                     </select>
                   </div>
-                  {draft.id_match_type === 'range' ? (
-                    <div>
-                      <label className="fp-label">USDOT Number Range</label>
-                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                        <input
-                          className="fp-input"
-                          placeholder="From (e.g. 4582560)"
-                          value={draft.usdot || ''}
-                          onChange={e => setDraft({ ...draft, usdot: e.target.value })}
-                        />
-                        <span style={{ color: 'var(--text-muted)' }}>→</span>
-                        <input
-                          className="fp-input"
-                          placeholder="To USDOT"
-                          value={draft.usdot_to || ''}
-                          onChange={e => setDraft({ ...draft, usdot_to: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="fp-label">
-                        {draft.id_match_type === 'starts_from' ? 'USDOT Starting From (≥)' : 'USDOT Number'}
-                      </label>
-                      <input
-                        className="fp-input"
-                        placeholder={draft.id_match_type === 'starts_from' ? 'e.g. 4582560 (continues to end)' : 'e.g. 4582560'}
-                        value={draft.usdot || ''}
-                        onChange={e => setDraft({ ...draft, usdot: e.target.value })}
-                      />
-                    </div>
-                  )}
+                  <div>
+                    <label className="fp-label">
+                      {draft.id_match_type === 'exact' ? 'USDOT Number (Exact)' : draft.id_match_type === 'contains' ? 'USDOT Contains' : 'USDOT Starts With (Prefix)'}
+                    </label>
+                    <input
+                      className="fp-input"
+                      placeholder={draft.id_match_type === 'exact' ? 'e.g. 4582560' : 'e.g. 458260 (shows all starting with 458260)'}
+                      value={draft.usdot || ''}
+                      onChange={e => setDraft({ ...draft, usdot: e.target.value })}
+                    />
+                  </div>
                 </div>
-                {draft.id_match_type === 'starts_from' && (
+                {(!draft.id_match_type || draft.id_match_type === 'starts_with') && (
                   <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.78rem', color: '#60a5fa' }}>
-                    💡 Showing all carriers starting from USDOT {draft.usdot?.trim() || '4582560'} onwards till the end of the database.
+                    💡 Showing all carriers starting with USDOT {draft.usdot?.trim() || '458260'}... (e.g. {draft.usdot?.trim() || '458260'}, {draft.usdot?.trim() ? `${draft.usdot.trim()}0` : '4582600'}). Unrelated numbers are excluded.
                   </p>
                 )}
                 <div className="fp-row">

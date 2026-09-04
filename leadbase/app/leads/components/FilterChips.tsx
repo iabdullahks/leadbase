@@ -23,14 +23,13 @@ export default function FilterChips({
     chips.push({ key: 'global_search', label: `Search: "${filters.global_search.trim()}"` });
   }
   if (filters.usdot?.trim()) {
-    if (filters.id_match_type === 'starts_from') {
-      chips.push({ key: 'usdot', label: `USDOT: From ${filters.usdot.trim()} → End` });
-    } else if (filters.id_match_type === 'range') {
-      chips.push({ key: 'usdot', label: `USDOT: ${filters.usdot.trim()} → ${filters.usdot_to?.trim() || 'End'}` });
-    } else if (filters.id_match_type === 'starts_with') {
-      chips.push({ key: 'usdot', label: `USDOT: Prefix "${filters.usdot.trim()}"` });
+    const v = filters.usdot.trim();
+    if (filters.id_match_type === 'exact') {
+      chips.push({ key: 'usdot', label: `USDOT: "${v}" (Exact)` });
+    } else if (filters.id_match_type === 'contains') {
+      chips.push({ key: 'usdot', label: `USDOT: Contains "${v}"` });
     } else {
-      chips.push({ key: 'usdot', label: `USDOT: ${filters.usdot.trim()}` });
+      chips.push({ key: 'usdot', label: `USDOT: Starts with "${v}"` });
     }
   }
   if (filters.company_name?.trim()) {
