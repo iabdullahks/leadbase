@@ -3,32 +3,46 @@ import type { Stats } from '@/lib/types';
 import Link from 'next/link';
 
 async function getStats(): Promise<Stats> {
-  const [totalRes, activeRes, inactiveRes, phoneRes, emailRes, todayRes] = await Promise.all([
-    supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }),
-    supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).eq('carrier_status', 'Active'),
-    supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).eq('carrier_status', 'Inactive'),
-    supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).neq('phone', ''),
-    supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).neq('email', ''),
-    supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true })
-      .gte('scraped_at', new Date().toISOString().slice(0, 10)),
-  ]);
-  return {
-    total:      totalRes.count   ?? 0,
-    active:     activeRes.count  ?? 0,
-    inactive:   inactiveRes.count ?? 0,
-    with_phone: phoneRes.count   ?? 0,
-    with_email: emailRes.count   ?? 0,
-    new_today:  todayRes.count   ?? 0,
-  };
+  try {
+    const [totalRes, activeRes, inactiveRes, phoneRes, emailRes, todayRes] = await Promise.all([
+      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }),
+      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).eq('carrier_status', 'Active'),
+      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).eq('carrier_status', 'Inactive'),
+      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).neq('phone', ''),
+      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).neq('email', ''),
+      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true })
+        .gte('scraped_at', new Date().toISOString().slice(0, 10)),
+    ]);
+    return {
+      total:      totalRes.count   ?? 0,
+      active:     activeRes.count  ?? 0,
+      inactive:   inactiveRes.count ?? 0,
+      with_phone: phoneRes.count   ?? 0,
+      with_email: emailRes.count   ?? 0,
+      new_today:  todayRes.count   ?? 0,
+    };
+  } catch (err) {
+    console.error('getStats error:', err);
+    return { total: 0, active: 0, inactive: 0, with_phone: 0, with_email: 0, new_today: 0 };
+  }
 }
 
 async function getRecentLeads() {
-  const { data } = await supabaseAdmin
-    .from('carriers')
-    .select('usdot_number, legal_name, carrier_status, scraped_at')
-    .order('scraped_at', { ascending: false })
-    .limit(10);
-  return data ?? [];
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('carriers')
+      .select('usdot_number, legal_name, carrier_status, scraped_at')
+      .order('scraped_at', { ascending: false })
+      .limit(10);
+    if (error) {
+      console.error('getRecentLeads error:', error);
+      return [];
+    }
+    return data ?? [];
+  } catch (err) {
+    console.error('getRecentLeads error:', err);
+    return [];
+  }
 }
 
 function formatDate(iso: string) {
