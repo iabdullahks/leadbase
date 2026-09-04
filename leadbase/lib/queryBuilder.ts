@@ -33,13 +33,24 @@ export function buildCarrierQuery(
     const v = filters.usdot.trim();
     if (filters.id_match_type === 'exact') {
       q = q.eq('usdot_number', v);
+    } else if (filters.id_match_type === 'starts_with') {
+      q = q.ilike('usdot_number', `${v}%`);
     } else if (filters.id_match_type === 'contains') {
       q = q.ilike('usdot_number', `%${v}%`);
     } else {
-      // Default: 'starts_with' (Prefix match: e.g. 458260% or 4582560%)
-      // This matches all leads starting with the given prefix (458260...) and guarantees
-      // that unrelated numbers like 96466 are NEVER returned.
-      q = q.ilike('usdot_number', `${v}%`);
+      // Default & 'starts_from': Numbers numerically >= v onwards to the end of the database!
+      // Uses exact digit-length boundary matching so shorter numbers like 96466 NEVER leak in!
+      if (/^\d+$/.test(v)) {
+        const L = v.length;
+        const underL = '_'.repeat(L);
+        const clauses = [`and(usdot_number.like.${underL},usdot_number.gte.${v})`];
+        for (let len = L + 1; len <= 10; len++) {
+          clauses.push(`usdot_number.like.${'_'.repeat(len)}`);
+        }
+        q = q.or(clauses.join(','));
+      } else {
+        q = q.ilike('usdot_number', `${v}%`);
+      }
     }
   }
 

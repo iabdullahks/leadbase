@@ -28,8 +28,10 @@ export default function FilterChips({
       chips.push({ key: 'usdot', label: `USDOT: "${v}" (Exact)` });
     } else if (filters.id_match_type === 'contains') {
       chips.push({ key: 'usdot', label: `USDOT: Contains "${v}"` });
+    } else if (filters.id_match_type === 'starts_with') {
+      chips.push({ key: 'usdot', label: `USDOT: Prefix "${v}"` });
     } else {
-      chips.push({ key: 'usdot', label: `USDOT: Starts with "${v}"` });
+      chips.push({ key: 'usdot', label: `USDOT: From ${v} → End` });
     }
   }
   if (filters.company_name?.trim()) {

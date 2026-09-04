@@ -210,31 +210,48 @@ export default function FilterDrawer({
                     <label className="fp-label">Match Type</label>
                     <select
                       className="fp-select"
-                      value={draft.id_match_type || 'starts_with'}
+                      value={draft.id_match_type || 'starts_from'}
                       onChange={e => setDraft({ ...draft, id_match_type: e.target.value as TextMatchOperator })}
                     >
-                      <option value="starts_with">🔤 Starts With (Prefix e.g. 458260...) — Default</option>
+                      <option value="starts_from">🚀 Starts From (≥ USDOT) — Continue to End</option>
+                      <option value="starts_with">🔤 Starts With (Prefix e.g. 4582...)</option>
                       <option value="exact">🎯 Exact Match</option>
                       <option value="contains">🔍 Contains</option>
                     </select>
                   </div>
                   <div>
                     <label className="fp-label">
-                      {draft.id_match_type === 'exact' ? 'USDOT Number (Exact)' : draft.id_match_type === 'contains' ? 'USDOT Contains' : 'USDOT Starts With (Prefix)'}
+                      {draft.id_match_type === 'exact'
+                        ? 'USDOT Number (Exact)'
+                        : draft.id_match_type === 'contains'
+                        ? 'USDOT Contains'
+                        : draft.id_match_type === 'starts_with'
+                        ? 'USDOT Starts With (Prefix)'
+                        : 'USDOT Starting From (≥)'}
                     </label>
                     <input
                       className="fp-input"
-                      placeholder={draft.id_match_type === 'exact' ? 'e.g. 4582560' : 'e.g. 458260 (shows all starting with 458260)'}
+                      placeholder={
+                        draft.id_match_type === 'exact'
+                          ? 'e.g. 4582560'
+                          : draft.id_match_type === 'starts_with'
+                          ? 'e.g. 4582 (shows all starting with 4582)'
+                          : 'e.g. 4582560 (shows all from 4582560 to end)'
+                      }
                       value={draft.usdot || ''}
                       onChange={e => setDraft({ ...draft, usdot: e.target.value })}
                     />
                   </div>
                 </div>
-                {(!draft.id_match_type || draft.id_match_type === 'starts_with') && (
+                {(!draft.id_match_type || draft.id_match_type === 'starts_from') ? (
                   <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.78rem', color: '#60a5fa' }}>
-                    💡 Showing all carriers starting with USDOT {draft.usdot?.trim() || '458260'}... (e.g. {draft.usdot?.trim() || '458260'}, {draft.usdot?.trim() ? `${draft.usdot.trim()}0` : '4582600'}). Unrelated numbers are excluded.
+                    💡 Showing all carriers starting from USDOT {draft.usdot?.trim() || '4582560'} onwards till the end of the database (58,537 leads). Shorter numbers like 96466 are strictly excluded.
                   </p>
-                )}
+                ) : draft.id_match_type === 'starts_with' ? (
+                  <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.78rem', color: '#60a5fa' }}>
+                    💡 Showing all carriers with USDOT starting with prefix &ldquo;{draft.usdot?.trim() || '4582'}&rdquo;...
+                  </p>
+                ) : null}
                 <div className="fp-row">
                   <label className="fp-label">Company / Legal Name</label>
                   <input
