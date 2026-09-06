@@ -32,7 +32,7 @@ const ALL_COLUMNS = [
 ];
 
 const CHUNK_SIZE = 2500; // 2,500 rows per fast sub-query
-const MAX_AUTO_CHUNK_LIMIT = 100000; // Single combined CSV export supports up to 100k leads
+const MAX_AUTO_CHUNK_LIMIT = 50000; // Hard cap safety guard: max 50k leads per export stream
 
 function fmtNum(val: unknown): string {
   const n = Number(val);
@@ -84,7 +84,7 @@ export default function ExportModal({
     exportMode === 'all_stream' ? targetAllCount :
     Math.min(safeBatchSize, Math.max(0, safeMatching - (batchNum - 1) * safeBatchSize));
 
-  // Sync scope when selectedCount or isOpen changes
+  const isOverCap = scope === 'all_matching' && safeMatching > MAX_AUTO_CHUNK_LIMIT;
   useEffect(() => {
     if (isOpen) {
       if (safeSelected > 0) {
@@ -139,6 +139,12 @@ export default function ExportModal({
     setErrorMessage(null);
     setProgressPercent(5);
     cancelRef.current = false;
+
+    if (isOverCap) {
+      setErrorMessage(`Active filters match ${fmtNum(safeMatching)} leads. Please refine your filters to under 50,000 leads before exporting.`);
+      setIsExporting(false);
+      return;
+    }
 
     const dateStr = new Date().toISOString().slice(0, 10);
 
@@ -349,6 +355,26 @@ export default function ExportModal({
         </div>
 
         <div className="modal-body">
+          {isOverCap && (
+            <div style={{
+              background: 'rgba(239,68,68,0.14)',
+              border: '1px solid rgba(239,68,68,0.45)',
+              borderRadius: '8px',
+              padding: '0.85rem 1.1rem',
+              color: '#fca5a5',
+              fontSize: '0.84rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
+            }}>
+              <span style={{ fontSize: '1.25rem' }}>⚠️</span>
+              <div>
+                Active filters match <strong>{fmtNum(safeMatching)}</strong> leads. Please refine your filters to under 50,000 leads before exporting.
+              </div>
+            </div>
+          )}
+
           {errorMessage && (
             <div style={{
               background: 'rgba(239,68,68,0.12)',
@@ -635,9 +661,15 @@ export default function ExportModal({
           <button
             className="btn-primary-lg"
             onClick={handleExport}
-            disabled={isExporting || selectedCols.length === 0}
+            disabled={isExporting || selectedCols.length === 0 || isOverCap}
+            style={{
+              opacity: isOverCap ? 0.5 : 1,
+              cursor: isOverCap ? 'not-allowed' : 'pointer',
+            }}
           >
-            {isExporting
+            {isOverCap
+              ? `⚠️ Exceeds 50k Limit (${fmtNum(safeMatching)} Matches)`
+              : isExporting
               ? `⏳ Exporting (${progressPercent}%)...`
               : scope === 'all_matching' && exportMode === 'all_stream'
               ? `⚡ Export All ${fmtNum(targetAllCount)} Leads (Single CSV)`

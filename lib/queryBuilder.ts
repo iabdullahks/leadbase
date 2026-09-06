@@ -31,9 +31,11 @@ export function buildCarrierQuery(
     q = q.or(`legal_name.ilike.%${s}%,dba_name.ilike.%${s}%,usdot_number.ilike.%${s}%,phone.ilike.%${s}%,email.ilike.%${s}%,principal_address.ilike.%${s}%`);
   }
 
-  // Identification Filters
-  if (filters.usdot?.trim()) {
-    const v = filters.usdot.trim();
+  // Identification Filters (USDOT) - supports filters.usdot, filters.dotFrom, filters.dot_number
+  const anyF = filters as unknown as Record<string, unknown>;
+  const rawDot = (filters.usdot || anyF.dotFrom || anyF.dot_number || anyF.usdot_from || '').toString().trim();
+  if (rawDot) {
+    const v = rawDot;
     if (filters.id_match_type === 'exact') {
       q = q.eq('usdot_number', v);
     } else if (filters.id_match_type === 'starts_with') {
@@ -55,6 +57,11 @@ export function buildCarrierQuery(
         q = q.ilike('usdot_number', `${v}%`);
       }
     }
+  }
+
+  const rawDotTo = (filters.usdot_to || anyF.dotTo || '').toString().trim();
+  if (rawDotTo && /^\d+$/.test(rawDotTo)) {
+    q = q.lte('usdot_number', rawDotTo);
   }
 
   if (filters.company_name?.trim()) {

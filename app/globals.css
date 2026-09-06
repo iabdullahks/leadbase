@@ -308,18 +308,19 @@ body {
 .fp-close { background: none; border: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 0.25rem; line-height: 1; transition: var(--t); border-radius: 4px; }
 .fp-close:hover { color: var(--text); background: rgba(255,255,255,0.03); }
 .fp-body { flex: 1; overflow-y: auto; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.75rem; }
-.fp-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
-.fp-sec-header { padding: 0.75rem 1rem; font-size: 0.82rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: var(--t); }
+.fp-section { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: visible; }
+.fp-sec-header { padding: 0.85rem 1.1rem; font-size: 0.84rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: var(--t); }
 .fp-sec-header:hover { background: rgba(255,255,255,0.025); color: var(--cyan); }
-.fp-sec-content { padding: 0.95rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.75rem; }
-.fp-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.9px; color: var(--muted); margin-bottom: 0.35rem; display: block; }
-.fp-input, .fp-select { width: 100%; padding: 0.5rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xs, 6px); color: var(--text); font-family: inherit; font-size: 0.82rem; transition: var(--t); }
-.fp-input:focus, .fp-select:focus { outline: none; border-color: var(--cyan); }
-.fp-select option { background: var(--bg2); }
-.fp-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-.fp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
-.fp-checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
-.fp-chip-check { display: flex; align-items: center; gap: 0.45rem; padding: 0.42rem 0.65rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 0.76rem; color: var(--muted2); cursor: pointer; transition: var(--t); user-select: none; }
+.fp-sec-content { padding: 1.1rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.95rem; overflow: visible; }
+.fp-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted2); margin-bottom: 0.45rem; display: block; line-height: 1.3; }
+.fp-input, .fp-select { width: 100%; min-height: 44px; padding: 0.625rem 0.85rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: inherit; font-size: 0.85rem; line-height: 1.45; box-sizing: border-box; transition: var(--t); }
+.fp-input:focus, .fp-select:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(34,211,238,0.15); }
+.fp-select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.85rem center; background-size: 1rem; padding-right: 2.25rem; appearance: none; }
+.fp-select option { background: var(--bg2); color: var(--text); padding: 0.5rem; }
+.fp-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; align-items: start; }
+.fp-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+.fp-checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; }
+.fp-chip-check { display: flex; align-items: center; gap: 0.55rem; min-height: 40px; padding: 0.5rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 0.78rem; color: var(--muted2); cursor: pointer; transition: var(--t); user-select: none; box-sizing: border-box; }
 .fp-chip-check:hover { border-color: var(--border2); color: var(--text2); }
 .fp-chip-check.selected { border-color: var(--cyan); background: rgba(34,211,238,0.1); color: var(--cyan); font-weight: 600; }
 .fp-states-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 4px; }

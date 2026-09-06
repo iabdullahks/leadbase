@@ -63,7 +63,7 @@ export default function FilterDrawer({
     ident: true,
     status: true,
     contact: true,
-    location: false,
+    location: true,
     fleet: true,
     cargo: false,
     dates: true,
@@ -72,9 +72,11 @@ export default function FilterDrawer({
   });
 
   useEffect(() => {
-    setDraft(filters);
-    setPreviewCount(totalCount);
-  }, [filters, isOpen, totalCount]);
+    if (isOpen) {
+      setDraft(filters);
+      setPreviewCount(totalCount);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -205,7 +207,7 @@ export default function FilterDrawer({
             </div>
             {expandedSections.ident && (
               <div className="fp-sec-content">
-                <div className="fp-grid-2">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
                   <div>
                     <label className="fp-label">Match Type</label>
                     <select
