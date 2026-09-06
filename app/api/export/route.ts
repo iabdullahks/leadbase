@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { buildCarrierQuery, defaultFilterState } from '@/lib/queryBuilder';
-import { Carrier, FilterState } from '@/lib/types';
+import { FilterState } from '@/lib/types';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -49,141 +49,115 @@ function buildCsvRow(item: Record<string, unknown>, columns: string[]): string {
   return columns.map(col => csvEscapeValue(item[col])).join(',');
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const filters: FilterState = body.filters || defaultFilterState();
-    const format: 'csv' | 'excel' | 'json' = body.format || 'csv';
-    const scope: 'all_matching' | 'selected' | 'current_page' = body.scope || 'all_matching';
-    const selectedIds: string[] = body.selected_ids || [];
-    const currentPageIds: string[] = body.current_page_ids || [];
-    const requestedColumns: string[] = body.columns || [
-      'usdot_number', 'legal_name', 'dba_name', 'phone', 'email',
-      'carrier_status', 'out_of_service', 'principal_address',
-      'state_incorporated', 'motus_entry_date', 'scraped_at'
-    ];
+async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
+  const filters: FilterState = (body.filters as FilterState) || defaultFilterState();
+  const format: 'csv' | 'excel' | 'json' = (body.format as 'csv' | 'excel' | 'json') || 'csv';
+  const scope: 'all_matching' | 'selected' | 'current_page' =
+    (body.scope as 'all_matching' | 'selected' | 'current_page') || 'all_matching';
+  const selectedIds: string[] = (body.selected_ids as string[]) || [];
+  const currentPageIds: string[] = (body.current_page_ids as string[]) || [];
+  const requestedColumns: string[] = (body.columns as string[]) || [
+    'usdot_number', 'legal_name', 'dba_name', 'phone', 'email',
+    'carrier_status', 'out_of_service', 'principal_address',
+    'state_incorporated', 'motus_entry_date', 'scraped_at',
+  ];
 
-    const batchNumForFilename = Number(body.batch_num) || 1;
-    const filename = `leadbase_export_${new Date().toISOString().slice(0, 10)}_batch${batchNumForFilename}.${format === 'excel' ? 'csv' : format}`;
-    const selectCols = requestedColumns.join(',');
+  const batchNumForFilename = Number(body.batch_num) || 1;
+  const filename = `leadbase_batch${batchNumForFilename}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
+  const selectCols = requestedColumns.join(',');
 
-    let allData: Record<string, unknown>[] = [];
+  let allData: Record<string, unknown>[] = [];
 
-    // ── Scope: Selected specific IDs ─────────────────────────────────────────
-    if (scope === 'selected' && selectedIds.length > 0) {
-      // Chunk large selected IDs in batches of 500
-      const chunkSize = 500;
-      for (let i = 0; i < selectedIds.length; i += chunkSize) {
-        const chunk = selectedIds.slice(i, i + chunkSize);
-        const { data, error } = await supabaseAdmin
-          .from('carriers')
-          .select(selectCols)
-          .in('usdot_number', chunk);
-        if (error) throw error;
-        if (data) allData.push(...(data as unknown as Record<string, unknown>[]));
-      }
+  // ── Scope: Selected specific IDs ─────────────────────────────────────────
+  if (scope === 'selected' && selectedIds.length > 0) {
+    const chunkSize = 500;
+    for (let i = 0; i < selectedIds.length; i += chunkSize) {
+      const chunk = selectedIds.slice(i, i + chunkSize);
+      const { data, error } = await supabaseAdmin
+        .from('carriers')
+        .select(selectCols)
+        .in('usdot_number', chunk);
+      if (error) throw error;
+      if (data) allData.push(...(data as unknown as Record<string, unknown>[]));
     }
-    // ── Scope: Current page visible rows ─────────────────────────────────────
-    else if (scope === 'current_page') {
-      if (currentPageIds.length > 0) {
-        const { data, error } = await supabaseAdmin
-          .from('carriers')
-          .select(selectCols)
-          .in('usdot_number', currentPageIds);
-        if (error) throw error;
-        allData = (data as unknown as Record<string, unknown>[]) || [];
-      } else {
-        // Fallback: fetch first page with filters applied (50 rows)
-        let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
-        q = q.order('id', { ascending: false }).range(0, 49);
-        const { data, error } = await q;
-        if (error) throw error;
-        allData = (data as unknown as Record<string, unknown>[]) || [];
-      }
-    }
-    // ── Scope: All Matching ──────────────────────────────────────────────────
-    else {
-      const batchSize = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
-      // batch_num is 1-indexed: batch 1 = rows 0–999, batch 2 = rows 1000–1999, etc.
-      const batchNum = Math.max(Number(body.batch_num) || 1, 1);
-      const offset = (batchNum - 1) * batchSize;
-      const from = offset;
-      const to = offset + batchSize - 1;
-
+  }
+  // ── Scope: Current page visible rows ─────────────────────────────────────
+  else if (scope === 'current_page') {
+    if (currentPageIds.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('carriers')
+        .select(selectCols)
+        .in('usdot_number', currentPageIds);
+      if (error) throw error;
+      allData = (data as unknown as Record<string, unknown>[]) || [];
+    } else {
       let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
-      const { data, error } = await q.order('id', { ascending: false }).range(from, to);
+      q = q.order('id', { ascending: false }).range(0, 49);
+      const { data, error } = await q;
       if (error) throw error;
       allData = (data as unknown as Record<string, unknown>[]) || [];
     }
+  }
+  // ── Scope: All Matching (paginated batches of 1000) ───────────────────────
+  else {
+    const batchSize = 1000;
+    const batchNum = Math.max(Number(body.batch_num) || 1, 1);
+    const from = (batchNum - 1) * batchSize;
+    const to = from + batchSize - 1;
+    let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
+    const { data, error } = await q.order('id', { ascending: false }).range(from, to);
+    if (error) throw error;
+    allData = (data as unknown as Record<string, unknown>[]) || [];
+  }
 
-    // ── Build Output Format ──────────────────────────────────────────────────
-    if (format === 'json') {
-      const jsonContent = JSON.stringify(allData, null, 2);
-      return new NextResponse(jsonContent, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Disposition': `attachment; filename="${filename}"`,
-        },
-      });
-    }
-
-    // CSV or Excel format
-    const headerRow = requestedColumns.map(c => csvEscapeValue(COLUMN_LABELS[c] || c)).join(',');
-    const rows = allData.map(item => buildCsvRow(item, requestedColumns));
-    const csvContent = [headerRow, ...rows].join('\n');
-
-    return new NextResponse(csvContent, {
+  // ── Build Output ──────────────────────────────────────────────────────────
+  if (format === 'json') {
+    return new NextResponse(JSON.stringify(allData, null, 2), {
       headers: {
-        'Content-Type': format === 'excel' ? 'text/csv; charset=utf-8' : 'text/csv',
+        'Content-Type': 'application/json',
         'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
+  }
 
+  const headerRow = requestedColumns.map(c => csvEscapeValue(COLUMN_LABELS[c] || c)).join(',');
+  const rows = allData.map(item => buildCsvRow(item, requestedColumns));
+  const csvContent = [headerRow, ...rows].join('\n');
+
+  return new NextResponse(csvContent, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  });
+}
+
+// ── GET: browser-native download via window.open / direct navigation ──────
+// Frontend calls: window.open('/api/export?d=BASE64_JSON')
+// This avoids all fetch+blob async download issues completely.
+export async function GET(req: NextRequest) {
+  try {
+    const d = req.nextUrl.searchParams.get('d');
+    if (!d) {
+      return NextResponse.json({ error: 'Missing export params (d)' }, { status: 400 });
+    }
+    const body = JSON.parse(Buffer.from(d, 'base64').toString('utf-8')) as Record<string, unknown>;
+    return await runExport(body);
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : (typeof e === 'object' && e !== null && 'message' in e) ? String((e as { message: unknown }).message) : String(e);
-    console.error('API /api/export POST error:', message);
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('API /api/export GET error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
-// Fallback GET export handler
-export async function GET(req: NextRequest) {
+// ── POST: kept for compatibility ──────────────────────────────────────────
+export async function POST(req: NextRequest) {
   try {
-    const sp = req.nextUrl.searchParams;
-    const search = sp.get('search')?.trim() ?? '';
-    const status = sp.get('status')?.trim() ?? 'all';
-    const hasPhone = sp.get('has_phone') === '1';
-    const hasEmail = sp.get('has_email') === '1';
-
-    const filters: FilterState = {
-      ...defaultFilterState(),
-      global_search: search,
-      carrier_statuses: status && status !== 'all' ? [status] : [],
-      has_phone: hasPhone ? true : null,
-      has_email: hasEmail ? true : null,
-    };
-
-    let q = buildCarrierQuery(supabaseAdmin, filters);
-    q = q.order('scraped_at', { ascending: false }).limit(1000);
-
-    const { data, error } = await q;
-    if (error) throw error;
-
-    const cols = ['usdot_number', 'legal_name', 'phone', 'email', 'carrier_status', 'out_of_service', 'scraped_at', 'motus_entry_date', 'profile_url'];
-    const headerRow = cols.map(c => csvEscapeValue(COLUMN_LABELS[c] || c)).join(',');
-    const rows = ((data as unknown as Record<string, unknown>[]) || []).map(item => buildCsvRow(item, cols));
-
-    const csvContent = [headerRow, ...rows].join('\n');
-    return new NextResponse(csvContent, {
-      headers: {
-        'Content-Type': 'text/csv',
-        'Content-Disposition': `attachment; filename="leads_export_${new Date().toISOString().slice(0, 10)}.csv"`,
-        'Content-Length': String(Buffer.byteLength(csvContent, 'utf-8')),
-      },
-    });
+    const body = await req.json();
+    return await runExport(body);
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error('API /api/export GET error:', message);
+    const message = e instanceof Error ? e.message : (typeof e === 'object' && e !== null && 'message' in e) ? String((e as { message: unknown }).message) : String(e);
+    console.error('API /api/export POST error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

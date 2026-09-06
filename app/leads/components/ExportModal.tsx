@@ -91,57 +91,37 @@ export default function ExportModal({
     scope === 'current_page' ? currentPageCount :
     Math.min(BATCH_SIZE, Math.max(0, matchingCount - (batchNum - 1) * BATCH_SIZE));
 
-  async function handleExport() {
+  function handleExport() {
     if (selectedCols.length === 0) return;
     setIsExporting(true);
     setExportProgress('fetching');
     setErrorMessage(null);
 
-    let succeeded = false;
     try {
-      const res = await fetch('/api/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filters,
-          format,
-          scope,
-          selected_ids: selectedIds,
-          columns: selectedCols,
-          current_page_ids: scope === 'current_page' ? currentPageIds : [],
-          limit: BATCH_SIZE,
-          batch_num: scope === 'all_matching' ? batchNum : 1,
-        }),
-      });
+      // Build the export params and base64-encode them
+      const params = {
+        filters,
+        format,
+        scope,
+        selected_ids: selectedIds,
+        columns: selectedCols,
+        current_page_ids: scope === 'current_page' ? currentPageIds : [],
+        limit: BATCH_SIZE,
+        batch_num: scope === 'all_matching' ? batchNum : 1,
+      };
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(params))));
+      const url = `/api/export?d=${encoded}`;
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Export failed (HTTP ${res.status})`);
-      }
+      // Open the URL directly — browser handles it as a file download natively.
+      // This is the same as clicking a real <a href="..."> download link.
+      window.open(url, '_blank');
 
-      const blob = await res.blob();
-      if (!blob || blob.size === 0) throw new Error('Server returned an empty file. Try again.');
-
-      const fileName = `leadbase_batch${batchNum}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
-
-      // Use dispatchEvent instead of .click() — more reliable after async fetches
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.style.display = 'none';
-      link.href = blobUrl;
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-
-      succeeded = true;
+      // Mark success immediately (download is in flight in the new tab)
       setExportProgress('success');
-
-      // Mark this batch as downloaded
       setDownloadedBatches(prev => new Set(prev).add(batchNum));
 
-      // Log to export history (fire-and-forget — don't await)
+      // Log to export history (fire-and-forget)
+      const fileName = `leadbase_batch${batchNum}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
       fetch('/api/export-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -154,22 +134,20 @@ export default function ExportModal({
         }),
       }).catch(e => console.warn('History log warning:', e));
 
-      // Auto-advance to next batch after success flash
+      // Auto-advance to next batch
       setTimeout(() => {
         setExportProgress('idle');
         setIsExporting(false);
         if (batchNum < totalBatches) {
           setBatchNum(b => b + 1);
         }
-      }, 1000);
+      }, 1500);
 
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Export failed. Check your connection and try again.';
+      const msg = err instanceof Error ? err.message : 'Export failed. Please try again.';
       setErrorMessage(msg);
       setExportProgress('idle');
-    } finally {
-      // Only reset isExporting here on failure; success case resets after the setTimeout
-      if (!succeeded) setIsExporting(false);
+      setIsExporting(false);
     }
   }
 
