@@ -97,6 +97,7 @@ export default function ExportModal({
     setExportProgress('fetching');
     setErrorMessage(null);
 
+    let succeeded = false;
     try {
       const res = await fetch('/api/export', {
         method: 'POST',
@@ -115,56 +116,60 @@ export default function ExportModal({
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Export request failed');
+        throw new Error(errData.error || `Export failed (HTTP ${res.status})`);
       }
 
-      setExportProgress('success');
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `leadbase_batch${batchNum}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      if (!blob || blob.size === 0) throw new Error('Server returned an empty file. Try again.');
+
+      const fileName = `leadbase_batch${batchNum}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
+
+      // Use dispatchEvent instead of .click() — more reliable after async fetches
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.style.display = 'none';
+      link.href = blobUrl;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+
+      succeeded = true;
+      setExportProgress('success');
 
       // Mark this batch as downloaded
-      const nextDownloaded = new Set(downloadedBatches).add(batchNum);
-      setDownloadedBatches(nextDownloaded);
+      setDownloadedBatches(prev => new Set(prev).add(batchNum));
 
-      // Log to export history
-      try {
-        await fetch('/api/export-history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            file_name: a.download,
-            format,
-            record_count: exportRecordCount,
-            filter_summary: `Batch ${batchNum}/${totalBatches} — ${exportRecordCount} rows (${format.toUpperCase()})`,
-            filter_state: filters,
-          }),
-        });
-      } catch (logErr) {
-        console.warn('History log warning:', logErr);
-      }
+      // Log to export history (fire-and-forget — don't await)
+      fetch('/api/export-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_name: fileName,
+          format,
+          record_count: exportRecordCount,
+          filter_summary: `Batch ${batchNum}/${totalBatches} — ${exportRecordCount} rows (${format.toUpperCase()})`,
+          filter_state: filters,
+        }),
+      }).catch(e => console.warn('History log warning:', e));
 
-      // Auto-advance to next batch if more remain
+      // Auto-advance to next batch after success flash
       setTimeout(() => {
         setExportProgress('idle');
         setIsExporting(false);
         if (batchNum < totalBatches) {
-          setBatchNum(batchNum + 1);
+          setBatchNum(b => b + 1);
         }
-      }, 700);
-      return; // skip the finally setIsExporting below (handled in setTimeout)
+      }, 1000);
+
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Export failed. Please check server logs.';
+      const msg = err instanceof Error ? err.message : 'Export failed. Check your connection and try again.';
       setErrorMessage(msg);
       setExportProgress('idle');
     } finally {
-      setIsExporting(false);
+      // Only reset isExporting here on failure; success case resets after the setTimeout
+      if (!succeeded) setIsExporting(false);
     }
   }
 
