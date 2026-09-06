@@ -117,7 +117,7 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
       const chunkTo = chunkFrom + thisChunkSize - 1;
 
       let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
-      chunkPromises.push(q.order('id', { ascending: false }).range(chunkFrom, chunkTo));
+      chunkPromises.push(q.order('id', { ascending: true }).range(chunkFrom, chunkTo));
     }
 
     const chunkResults = await Promise.all(chunkPromises);

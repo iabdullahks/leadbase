@@ -151,8 +151,7 @@ export default function ExportModal({
         }
 
         const totalChunksNeeded = Math.max(1, Math.ceil(totalTarget / CHUNK_SIZE));
-        const csvRowsAccumulator: string[] = [];
-        let headerRow = '';
+        const blobParts: BlobPart[] = ['\uFEFF']; // UTF-8 BOM
         let totalRecordsGathered = 0;
 
         for (let chunkIdx = 0; chunkIdx < totalChunksNeeded; chunkIdx++) {
@@ -183,25 +182,51 @@ export default function ExportModal({
             throw new Error(errJson.error || `Chunk ${currentBatchNum} failed (HTTP ${res.status})`);
           }
 
-          const rawText = await res.text();
-          const cleanText = rawText.startsWith('\uFEFF') ? rawText.slice(1) : rawText;
-          const lines = cleanText.split('\n').filter(l => l.trim().length > 0);
-
-          if (lines.length > 0) {
-            if (!headerRow) {
-              headerRow = lines[0];
-            }
-            // Data lines (exclude header from subsequent chunks)
-            const dataLines = lines.slice(1);
-            if (dataLines.length > 0) {
-              csvRowsAccumulator.push(...dataLines);
-              totalRecordsGathered += dataLines.length;
-            }
-            if (dataLines.length < CHUNK_SIZE) {
-              // Reached end of matching database records
-              break;
-            }
+          let rawText = await res.text();
+          if (rawText.startsWith('\uFEFF')) {
+            rawText = rawText.slice(1);
           }
+
+          // Normalize ending newline so batch concatenation doesn't merge boundary rows
+          if (!rawText.endsWith('\n')) {
+            rawText += '\n';
+          }
+
+          const firstNewline = rawText.indexOf('\n');
+          if (firstNewline === -1) {
+            // Chunk returned empty content
+            break;
+          }
+
+          let chunkPayload = '';
+          let batchDataRows = 0;
+
+          if (chunkIdx === 0) {
+            // Batch 1: Include header + data
+            chunkPayload = rawText;
+            const lines = rawText.trim().split('\n');
+            batchDataRows = Math.max(0, lines.length - 1);
+          } else {
+            // Batch > 1: Strip header row
+            chunkPayload = rawText.slice(firstNewline + 1);
+            const cleanData = chunkPayload.trim();
+            batchDataRows = cleanData.length > 0 ? cleanData.split('\n').length : 0;
+          }
+
+          if (batchDataRows === 0) {
+            break; // No more rows from database
+          }
+
+          blobParts.push(chunkPayload);
+          totalRecordsGathered += batchDataRows;
+
+          // If server sent fewer rows than the requested batch size, we reached the end
+          if (batchDataRows < CHUNK_SIZE) {
+            break;
+          }
+
+          // Let the browser UI thread repaint between chunks
+          await new Promise((r) => setTimeout(r, 20));
         }
 
         if (totalRecordsGathered === 0) {
@@ -211,13 +236,11 @@ export default function ExportModal({
         setProgressPercent(100);
         setProgressStatus(`✓ Successfully compiled ${fmtNum(totalRecordsGathered)} leads! Saving file...`);
 
-        // Assemble single combined CSV
-        const finalCsv = '\uFEFF' + [headerRow, ...csvRowsAccumulator].join('\n');
-        const finalBlob = new Blob([finalCsv], { type: 'text/csv;charset=utf-8;' });
+        const finalBlob = new Blob(blobParts, { type: 'text/csv;charset=utf-8;' });
         const finalFileName = `leadbase_all_${totalRecordsGathered}_leads_${dateStr}.${format === 'excel' ? 'csv' : format}`;
         triggerBlobDownload(finalBlob, finalFileName);
 
-        // History log
+        // History log (fire-and-forget)
         fetch('/api/export-history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -228,7 +251,7 @@ export default function ExportModal({
             filter_summary: `All Filtered Leads (${fmtNum(totalRecordsGathered)} rows)`,
             filter_state: filters,
           }),
-        }).catch(e => console.warn('History log warning:', e));
+        }).catch((e) => console.warn('History log warning:', e));
 
         setTimeout(() => {
           setIsExporting(false);
