@@ -134,14 +134,8 @@ export function buildCarrierQuery(
 
   // Location Filters (States / Cities / Address)
   if (filters.states && filters.states.length > 0) {
-    // BUG FIX: The previous ilike pattern used embedded escaped quotes like \"%, TX,%\"
-    // which is invalid in PostgREST OR filter strings and causes the address part to silently fail.
-    // Correct: use plain ilike patterns without embedded quote escapes.
     const stateList = filters.states.map(s => s.toUpperCase());
-    const incPart = `state_incorporated.in.(${stateList.join(',')})`;
-    // For the address part, match ", TX " or ", TX," patterns in the principal_address
-    const addrParts = stateList.map(st => `principal_address.ilike.%, ${st}%`);
-    q = q.or(`${incPart},${addrParts.join(',')}`);
+    q = q.in('state_incorporated', stateList);
   }
 
   if (filters.city?.trim()) {

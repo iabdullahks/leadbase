@@ -46,22 +46,22 @@ export default function ExportModal({
   const [scope, setScope] = useState<'all_matching' | 'selected' | 'current_page'>(
     selectedCount > 0 ? 'selected' : 'all_matching'
   );
-  const [exportLimit, setExportLimit] = useState<number>(10000);
+  const [exportLimit, setExportLimit] = useState<number>(1000);
   const [selectedCols, setSelectedCols] = useState<string[]>(ALL_COLUMNS.map(c => c.id));
   const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<'idle' | 'fetching' | 'success'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // BUG FIX: Sync scope when selectedCount changes (useState initial value only runs once on mount)
+  // Sync scope when selectedCount changes
   useEffect(() => {
     if (isOpen) {
-      // When modal opens, smart-default the scope based on current selection
       if (selectedCount > 0) {
         setScope(prev => prev === 'all_matching' ? 'selected' : prev);
       } else {
-        // If selection was cleared externally, fall back to all_matching
         setScope(prev => prev === 'selected' ? 'all_matching' : prev);
       }
       setErrorMessage(null);
+      setExportProgress('idle');
     }
   }, [isOpen, selectedCount]);
 
@@ -90,6 +90,7 @@ export default function ExportModal({
   async function handleExport() {
     if (selectedCols.length === 0) return;
     setIsExporting(true);
+    setExportProgress('fetching');
     setErrorMessage(null);
 
     try {
@@ -106,7 +107,6 @@ export default function ExportModal({
         body: JSON.stringify({
           filters,
           limit: scope === 'all_matching' ? exportLimit : undefined,
-          // BUG FIX: Pass current page IDs so export exactly matches the visible rows
           current_page_ids: scope === 'current_page' ? currentPageIds : [],
           ...opts,
         }),
@@ -117,6 +117,7 @@ export default function ExportModal({
         throw new Error(errData.error || 'Export request failed');
       }
 
+      setExportProgress('success');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -144,10 +145,14 @@ export default function ExportModal({
         console.warn('History log warning:', logErr);
       }
 
-      onClose();
+      // Brief delay so user sees success confirmation before closing
+      setTimeout(() => {
+        onClose();
+      }, 700);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Export failed. Please check server logs.';
       setErrorMessage(msg);
+      setExportProgress('idle');
     } finally {
       setIsExporting(false);
     }
@@ -220,10 +225,10 @@ export default function ExportModal({
                 <div>
                   <strong>All {matchingCount.toLocaleString()} matching carriers</strong>
                   <span className="ex-subtext">Exports carriers matching your active filters</span>
-                  {matchingCount > 1000 && (
+                  {matchingCount > 500 && (
                     <div style={{ marginTop: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Limit:</span>
-                      {[1000, 5000, 10000, 25000, 50000].map(lim => (
+                      {[500, 1000, 2500, 5000, 10000, 25000].map(lim => (
                         <button
                           key={lim}
                           type="button"
@@ -299,16 +304,44 @@ export default function ExportModal({
               ))}
             </div>
           </div>
+
+          {/* Active Export Status Banner */}
+          {isExporting && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '0.75rem 1rem',
+              background: 'rgba(34, 211, 238, 0.08)',
+              border: '1px solid rgba(34, 211, 238, 0.25)',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <span style={{ fontSize: '1.2rem', display: 'inline-block' }}>⚡</span>
+              <div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--cyan)' }}>
+                  {exportProgress === 'success'
+                    ? '✓ File prepared! Starting download…'
+                    : `Compiling ${exportRecordCount.toLocaleString()} leads (${format.toUpperCase()})…`}
+                </div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
+                  {exportProgress === 'success'
+                    ? 'Your browser will save the file momentarily.'
+                    : 'Fetching carrier fields in high-speed parallel batches…'}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn-secondary" onClick={onClose} disabled={isExporting}>Cancel</button>
           <button
             className="btn-primary-lg"
             onClick={handleExport}
             disabled={isExporting || selectedCols.length === 0}
           >
-            {isExporting ? 'Generating Export…' : `Export ${exportRecordCount.toLocaleString()} Carriers`}
+            {exportProgress === 'success' ? '✓ Download Started!' : isExporting ? '⏳ Exporting…' : `Export ${exportRecordCount.toLocaleString()} Carriers`}
           </button>
         </div>
       </div>
