@@ -7,6 +7,7 @@ import FilterDrawer from './components/FilterDrawer';
 import FilterChips from './components/FilterChips';
 import SavedViewsModal from './components/SavedViewsModal';
 import ExportModal from './components/ExportModal';
+import ExportErrorBoundary from './components/ExportErrorBoundary';
 import ExportHistoryDrawer from './components/ExportHistoryDrawer';
 import ColumnVisibilityModal from './components/ColumnVisibilityModal';
 import EquipmentDropdown from './components/EquipmentDropdown';
@@ -501,16 +502,18 @@ export default function LeadsPage() {
         onApplyView={handleFilterApply}
       />
 
-      <ExportModal
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        filters={filters}
-        matchingCount={total}
-        selectedCount={selectedIds.length}
-        currentPageCount={leads.length}
-        selectedIds={selectedIds}
-        currentPageIds={leads.map(l => l.usdot_number)}
-      />
+      <ExportErrorBoundary onReset={() => setIsExportOpen(false)}>
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          filters={filters}
+          matchingCount={total || 0}
+          selectedCount={selectedIds?.length || 0}
+          currentPageCount={leads?.length || 0}
+          selectedIds={selectedIds || []}
+          currentPageIds={(leads || []).map(l => l.usdot_number)}
+        />
+      </ExportErrorBoundary>
 
       <ExportHistoryDrawer
         isOpen={isHistoryOpen}

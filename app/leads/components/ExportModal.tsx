@@ -6,11 +6,11 @@ import { FilterState } from '@/lib/types';
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  filters: FilterState;
-  matchingCount: number;
-  selectedCount: number;
-  currentPageCount: number;
-  selectedIds: string[];
+  filters?: FilterState;
+  matchingCount?: number;
+  selectedCount?: number;
+  currentPageCount?: number;
+  selectedIds?: string[];
   currentPageIds?: string[];
 }
 
@@ -31,29 +31,38 @@ const ALL_COLUMNS = [
   { id: 'profile_url', label: 'MOTUS Profile Link' },
 ];
 
-const CHUNK_SIZE = 2500; // Optimal speed (1.5-2s per chunk, zero Vercel timeout)
-const MAX_AUTO_CHUNK_LIMIT = 50000; // Download up to 50k leads in a single combined CSV
+const CHUNK_SIZE = 2500; // 2,500 rows per fast sub-query
+const MAX_AUTO_CHUNK_LIMIT = 100000; // Single combined CSV export supports up to 100k leads
+
+function fmtNum(val: unknown): string {
+  const n = Number(val);
+  return Number.isFinite(n) ? n.toLocaleString() : '0';
+}
 
 export default function ExportModal({
   isOpen,
   onClose,
   filters,
-  matchingCount,
-  selectedCount,
-  currentPageCount,
-  selectedIds,
+  matchingCount = 0,
+  selectedCount = 0,
+  currentPageCount = 0,
+  selectedIds = [],
   currentPageIds = [],
 }: ExportModalProps) {
+  const safeMatching = Math.max(0, Number(matchingCount) || 0);
+  const safeSelected = Math.max(0, Number(selectedCount) || 0);
+  const safeCurrentPage = Math.max(0, Number(currentPageCount) || 0);
+
   const [format, setFormat] = useState<'csv' | 'excel' | 'json'>('csv');
   const [scope, setScope] = useState<'all_matching' | 'selected' | 'current_page'>(
-    selectedCount > 0 ? 'selected' : 'all_matching'
+    safeSelected > 0 ? 'selected' : 'all_matching'
   );
   const [exportMode, setExportMode] = useState<'all_stream' | 'batch'>('all_stream');
   const [selectedCols, setSelectedCols] = useState<string[]>(ALL_COLUMNS.map(c => c.id));
   const [batchSize, setBatchSize] = useState<number>(1000);
   const [batchNum, setBatchNum] = useState<number>(1);
   const [downloadedBatches, setDownloadedBatches] = useState<Set<number>>(new Set());
-  
+
   // Progress states
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [progressPercent, setProgressPercent] = useState<number>(0);
@@ -62,30 +71,33 @@ export default function ExportModal({
 
   const cancelRef = useRef<boolean>(false);
 
-  const totalBatches = Math.max(1, Math.ceil(matchingCount / batchSize));
+  const safeBatchSize = Math.max(100, Number(batchSize) || 1000);
+  const totalBatches = Number.isFinite(safeMatching / safeBatchSize)
+    ? Math.max(1, Math.ceil(safeMatching / safeBatchSize))
+    : 1;
 
   // Determine how many records will be downloaded in the chosen mode
-  const targetAllCount = Math.min(matchingCount, MAX_AUTO_CHUNK_LIMIT);
+  const targetAllCount = Math.min(safeMatching, MAX_AUTO_CHUNK_LIMIT);
   const exportRecordCount =
-    scope === 'selected' ? selectedCount :
-    scope === 'current_page' ? currentPageCount :
+    scope === 'selected' ? safeSelected :
+    scope === 'current_page' ? safeCurrentPage :
     exportMode === 'all_stream' ? targetAllCount :
-    Math.min(batchSize, Math.max(0, matchingCount - (batchNum - 1) * batchSize));
+    Math.min(safeBatchSize, Math.max(0, safeMatching - (batchNum - 1) * safeBatchSize));
 
-  // Sync scope when selectedCount changes
+  // Sync scope when selectedCount or isOpen changes
   useEffect(() => {
     if (isOpen) {
-      if (selectedCount > 0) {
+      if (safeSelected > 0) {
         setScope('selected');
       } else {
-        setScope(prev => prev === 'selected' ? 'all_matching' : prev);
+        setScope(prev => (prev === 'selected' ? 'all_matching' : prev));
       }
       setErrorMessage(null);
       setIsExporting(false);
       setProgressPercent(0);
       cancelRef.current = false;
     }
-  }, [isOpen, selectedCount]);
+  }, [isOpen, safeSelected]);
 
   if (!isOpen) return null;
 
@@ -114,7 +126,9 @@ export default function ExportModal({
     document.body.appendChild(link);
     link.click();
     setTimeout(() => {
-      document.body.removeChild(link);
+      if (link.parentNode) {
+        document.body.removeChild(link);
+      }
       URL.revokeObjectURL(blobUrl);
     }, 3000);
   }
@@ -132,7 +146,11 @@ export default function ExportModal({
       // ── MODE 1: All Matching Auto-Chunked Combined Stream ─────────────────────
       if (scope === 'all_matching' && exportMode === 'all_stream') {
         const totalTarget = targetAllCount;
-        const totalChunksNeeded = Math.ceil(totalTarget / CHUNK_SIZE);
+        if (totalTarget === 0) {
+          throw new Error('No matching records found to export with your current filters.');
+        }
+
+        const totalChunksNeeded = Math.max(1, Math.ceil(totalTarget / CHUNK_SIZE));
         const csvRowsAccumulator: string[] = [];
         let headerRow = '';
         let totalRecordsGathered = 0;
@@ -141,17 +159,17 @@ export default function ExportModal({
           if (cancelRef.current) break;
 
           const currentBatchNum = chunkIdx + 1;
-          const pct = Math.min(95, Math.round(((chunkIdx) / totalChunksNeeded) * 100));
+          const pct = Math.min(95, Math.round((chunkIdx / totalChunksNeeded) * 100));
           setProgressPercent(pct);
           setProgressStatus(
-            `Fetching batch ${currentBatchNum}/${totalChunksNeeded} (${totalRecordsGathered.toLocaleString()} / ${totalTarget.toLocaleString()} leads)...`
+            `Fetching chunk ${currentBatchNum}/${totalChunksNeeded} (${fmtNum(totalRecordsGathered)} / ${fmtNum(totalTarget)} leads)...`
           );
 
           const res = await fetch('/api/export', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              filters,
+              filters: filters || {},
               format: 'csv',
               scope: 'all_matching',
               columns: selectedCols,
@@ -180,7 +198,7 @@ export default function ExportModal({
               totalRecordsGathered += dataLines.length;
             }
             if (dataLines.length < CHUNK_SIZE) {
-              // Reached end of database matching records
+              // Reached end of matching database records
               break;
             }
           }
@@ -191,7 +209,7 @@ export default function ExportModal({
         }
 
         setProgressPercent(100);
-        setProgressStatus(`✓ Successfully compiled ${totalRecordsGathered.toLocaleString()} leads! Saving file...`);
+        setProgressStatus(`✓ Successfully compiled ${fmtNum(totalRecordsGathered)} leads! Saving file...`);
 
         // Assemble single combined CSV
         const finalCsv = '\uFEFF' + [headerRow, ...csvRowsAccumulator].join('\n');
@@ -207,7 +225,7 @@ export default function ExportModal({
             file_name: finalFileName,
             format,
             record_count: totalRecordsGathered,
-            filter_summary: `All Filtered Leads (${totalRecordsGathered.toLocaleString()} rows)`,
+            filter_summary: `All Filtered Leads (${fmtNum(totalRecordsGathered)} rows)`,
             filter_state: filters,
           }),
         }).catch(e => console.warn('History log warning:', e));
@@ -220,15 +238,15 @@ export default function ExportModal({
       }
 
       // ── MODE 2: Single Batch or Selected / Current Page ──────────────────────
-      setProgressStatus(`Exporting ${exportRecordCount.toLocaleString()} carriers...`);
+      setProgressStatus(`Exporting ${fmtNum(exportRecordCount)} carriers...`);
       const params = {
-        filters,
+        filters: filters || {},
         format,
         scope,
         selected_ids: selectedIds,
         columns: selectedCols,
         current_page_ids: scope === 'current_page' ? currentPageIds : [],
-        limit: batchSize,
+        limit: safeBatchSize,
         batch_num: scope === 'all_matching' ? batchNum : 1,
       };
 
@@ -269,7 +287,7 @@ export default function ExportModal({
           file_name: fileName,
           format,
           record_count: exportRecordCount,
-          filter_summary: `${exportRecordCount} records (${scope})`,
+          filter_summary: `${fmtNum(exportRecordCount)} records (${scope})`,
           filter_state: filters,
         }),
       }).catch(e => console.warn('History log warning:', e));
@@ -289,6 +307,11 @@ export default function ExportModal({
     }
   }
 
+  const safeBatchCount = Number.isFinite(totalBatches) && totalBatches > 0
+    ? Math.min(Math.floor(totalBatches), 40)
+    : 1;
+  const batchNumbers = Array.from({ length: safeBatchCount }, (_, i) => i + 1);
+
   return (
     <div className="modal-overlay" onClick={() => { if (!isExporting) onClose(); }}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '640px' }}>
@@ -296,7 +319,7 @@ export default function ExportModal({
           <div>
             <div className="modal-title">📥 Export Leads to CSV</div>
             <div className="modal-sub">
-              <strong>{matchingCount.toLocaleString()}</strong> carriers match your current filters
+              <strong>{fmtNum(safeMatching)}</strong> carriers match your current filters
             </div>
           </div>
           <button className="modal-close" onClick={() => { if (!isExporting) onClose(); }} disabled={isExporting}>✕</button>
@@ -346,7 +369,7 @@ export default function ExportModal({
           <div className="ex-group">
             <label className="modal-label">2. Target Scope</label>
             <div className="ex-scope-list">
-              {selectedCount > 0 && (
+              {safeSelected > 0 && (
                 <label className={`ex-scope-item ${scope === 'selected' ? 'active' : ''}`}>
                   <input
                     type="radio"
@@ -356,7 +379,7 @@ export default function ExportModal({
                     disabled={isExporting}
                   />
                   <div>
-                    <strong>{selectedCount.toLocaleString()} selected records</strong>
+                    <strong>{fmtNum(safeSelected)} selected records</strong>
                     <span className="ex-subtext">Exports only the specific leads you manually checked</span>
                   </div>
                 </label>
@@ -371,8 +394,8 @@ export default function ExportModal({
                   disabled={isExporting}
                 />
                 <div style={{ width: '100%' }}>
-                  <strong>All {matchingCount.toLocaleString()} matching carriers</strong>
-                  <span className="ex-subtext">Exports all records satisfying your active search & filters</span>
+                  <strong>All {fmtNum(safeMatching)} matching carriers</strong>
+                  <span className="ex-subtext">Exports all records satisfying your active search &amp; filters</span>
 
                   {scope === 'all_matching' && (
                     <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -399,13 +422,13 @@ export default function ExportModal({
                         />
                         <div>
                           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: exportMode === 'all_stream' ? 'var(--cyan)' : 'var(--text)' }}>
-                            ⚡ Download ALL {targetAllCount.toLocaleString()} Leads in 1 Single CSV File
+                            ⚡ Download ALL {fmtNum(targetAllCount)} Leads in 1 Single CSV File
                           </span>
                           <span style={{ fontSize: '0.72rem', color: 'var(--muted)', display: 'block', marginTop: '2px' }}>
                             Auto-chunks in parallel background streams and merges into one complete CSV. Zero timeouts.
-                            {matchingCount > MAX_AUTO_CHUNK_LIMIT && (
+                            {safeMatching > MAX_AUTO_CHUNK_LIMIT && (
                               <span style={{ color: '#fbbf24', display: 'block' }}>
-                                (Capped at first 50,000 leads for browser stability. Use filters for specific segments.)
+                                (Capped at first {fmtNum(MAX_AUTO_CHUNK_LIMIT)} leads for browser stability. Use filters for specific segments.)
                               </span>
                             )}
                           </span>
@@ -443,7 +466,7 @@ export default function ExportModal({
 
                           {exportMode === 'batch' && (
                             <div style={{ marginTop: '0.6rem' }}>
-                              <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.5rem' }}>
+                              <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
                                 {[1000, 2500, 5000, 10000].map(sz => (
                                   <button
                                     key={sz}
@@ -453,21 +476,21 @@ export default function ExportModal({
                                       padding: '0.25rem 0.55rem',
                                       fontSize: '0.72rem',
                                       borderRadius: '6px',
-                                      border: batchSize === sz ? '1px solid var(--cyan)' : '1px solid var(--border)',
-                                      background: batchSize === sz ? 'rgba(34,211,238,0.2)' : 'var(--bg)',
-                                      color: batchSize === sz ? 'var(--cyan)' : 'var(--muted2)',
+                                      border: safeBatchSize === sz ? '1px solid var(--cyan)' : '1px solid var(--border)',
+                                      background: safeBatchSize === sz ? 'rgba(34,211,238,0.2)' : 'var(--bg)',
+                                      color: safeBatchSize === sz ? 'var(--cyan)' : 'var(--muted2)',
                                       cursor: 'pointer',
                                     }}
                                   >
-                                    {sz.toLocaleString()} / file
+                                    {fmtNum(sz)} / file
                                   </button>
                                 ))}
                               </div>
                               <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: '0.3rem' }}>
-                                Select batch ({totalBatches} total):
+                                Select batch ({fmtNum(totalBatches)} total):
                               </div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', maxHeight: '80px', overflowY: 'auto' }}>
-                                {Array.from({ length: Math.min(totalBatches, 40) }, (_, i) => i + 1).map(n => (
+                                {batchNumbers.map(n => (
                                   <button
                                     key={n}
                                     type="button"
@@ -504,8 +527,8 @@ export default function ExportModal({
                   disabled={isExporting}
                 />
                 <div>
-                  <strong>Current page ({currentPageCount} records)</strong>
-                  <span className="ex-subtext">Exports only the currently visible {currentPageCount} rows on this page</span>
+                  <strong>Current page ({fmtNum(safeCurrentPage)} records)</strong>
+                  <span className="ex-subtext">Exports only the currently visible {fmtNum(safeCurrentPage)} rows on this page</span>
                 </div>
               </label>
             </div>
@@ -594,8 +617,8 @@ export default function ExportModal({
             {isExporting
               ? `⏳ Exporting (${progressPercent}%)...`
               : scope === 'all_matching' && exportMode === 'all_stream'
-              ? `⚡ Export All ${targetAllCount.toLocaleString()} Leads (Single CSV)`
-              : `📥 Export ${exportRecordCount.toLocaleString()} Carriers (${format.toUpperCase()})`}
+              ? `⚡ Export All ${fmtNum(targetAllCount)} Leads (Single CSV)`
+              : `📥 Export ${fmtNum(exportRecordCount)} Carriers (${format.toUpperCase()})`}
           </button>
         </div>
       </div>
