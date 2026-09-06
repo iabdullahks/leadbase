@@ -12,6 +12,7 @@ import ColumnVisibilityModal from './components/ColumnVisibilityModal';
 import EquipmentDropdown from './components/EquipmentDropdown';
 import StatusDropdown from './components/StatusDropdown';
 import SortDropdown from './components/SortDropdown';
+import { downloadSingleLeadCsv } from '@/lib/exportSingleLead';
 
 const PAGE_SIZE = 50;
 
@@ -440,10 +441,30 @@ export default function LeadsPage() {
                   {visibleCols.includes('scraped_at') && (
                     <td className="td-date">{formatDate(lead.scraped_at)}</td>
                   )}
-                  <td>
-                    <button className="btn-view" onClick={e => { e.stopPropagation(); setSelectedLead(lead); }}>
-                      View →
-                    </button>
+                  <td style={{ whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                      <button className="btn-view" onClick={() => setSelectedLead(lead)}>
+                        View →
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadSingleLeadCsv(lead)}
+                        title="Download this single lead as CSV"
+                        style={{
+                          padding: '0.3rem 0.55rem',
+                          background: 'rgba(34,211,238,0.08)',
+                          border: '1px solid rgba(34,211,238,0.25)',
+                          color: 'var(--cyan)',
+                          borderRadius: '6px',
+                          fontSize: '0.74rem',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          lineHeight: 1,
+                        }}
+                      >
+                        📥 CSV
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -517,28 +538,41 @@ export default function LeadsPage() {
             </div>
             <div className="drawer-body">
               {/* Quick Actions */}
-              {(selectedLead.phone || selectedLead.email) && (
-                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  {selectedLead.phone && (
-                    <a href={`tel:${selectedLead.phone}`} className="drawer-action-link dlink-green">
-                      📞 {selectedLead.phone}
-                    </a>
-                  )}
-                  {selectedLead.email && (
-                    <a href={`mailto:${selectedLead.email}`} className="drawer-action-link dlink-purple">
-                      ✉️ {selectedLead.email}
-                    </a>
-                  )}
-                  <a
-                    href={`/leads/${selectedLead.usdot_number}`}
-                    className="drawer-action-link dlink-blue"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    🔗 Full Profile
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => downloadSingleLeadCsv(selectedLead)}
+                  className="drawer-action-link"
+                  style={{
+                    background: 'rgba(34,211,238,0.12)',
+                    border: '1px solid var(--cyan)',
+                    color: 'var(--cyan)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                  title="Download this lead as CSV"
+                >
+                  📥 Export Lead (CSV)
+                </button>
+                {selectedLead.phone && (
+                  <a href={`tel:${selectedLead.phone}`} className="drawer-action-link dlink-green">
+                    📞 {selectedLead.phone}
                   </a>
-                </div>
-              )}
+                )}
+                {selectedLead.email && (
+                  <a href={`mailto:${selectedLead.email}`} className="drawer-action-link dlink-purple">
+                    ✉️ {selectedLead.email}
+                  </a>
+                )}
+                <a
+                  href={`/leads/${selectedLead.usdot_number}`}
+                  className="drawer-action-link dlink-blue"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  🔗 Full Profile
+                </a>
+              </div>
 
               <div className="drawer-section">
                 <div className="drawer-section-title">Contact Information</div>

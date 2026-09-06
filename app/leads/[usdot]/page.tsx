@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Carrier } from '@/lib/types';
 import Link from 'next/link';
+import ExportLeadButton from './ExportLeadButton';
 import { notFound } from 'next/navigation';
 
 function fmt(n: number) { return n.toLocaleString(); }
@@ -51,6 +52,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ usd
           </div>
         </div>
         <div className="detail-actions">
+          <ExportLeadButton carrier={c} />
           <a
             href={c.profile_url as string || `https://motus.dot.gov/customer/${c.usdot_number}/account`}
             target="_blank" rel="noreferrer"

@@ -62,23 +62,27 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
     'state_incorporated', 'motus_entry_date', 'scraped_at',
   ];
 
-  const batchNumForFilename = Number(body.batch_num) || 1;
-  const filename = `leadbase_batch${batchNumForFilename}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
   const selectCols = requestedColumns.join(',');
-
+  const dateStr = new Date().toISOString().slice(0, 10);
   let allData: Record<string, unknown>[] = [];
 
   // ── Scope: Selected specific IDs ─────────────────────────────────────────
   if (scope === 'selected' && selectedIds.length > 0) {
     const chunkSize = 500;
+    const promises = [];
     for (let i = 0; i < selectedIds.length; i += chunkSize) {
       const chunk = selectedIds.slice(i, i + chunkSize);
-      const { data, error } = await supabaseAdmin
-        .from('carriers')
-        .select(selectCols)
-        .in('usdot_number', chunk);
-      if (error) throw error;
-      if (data) allData.push(...(data as unknown as Record<string, unknown>[]));
+      promises.push(
+        supabaseAdmin
+          .from('carriers')
+          .select(selectCols)
+          .in('usdot_number', chunk)
+      );
+    }
+    const results = await Promise.all(promises);
+    for (const res of results) {
+      if (res.error) throw res.error;
+      if (res.data) allData.push(...(res.data as unknown as Record<string, unknown>[]));
     }
   }
   // ── Scope: Current page visible rows ─────────────────────────────────────
@@ -98,16 +102,42 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
       allData = (data as unknown as Record<string, unknown>[]) || [];
     }
   }
-  // ── Scope: All Matching (paginated batches of 1000) ───────────────────────
+  // ── Scope: All Matching (multi-chunk parallel queries) ───────────────────
   else {
-    const batchSize = 1000;
+    const requestedLimit = Math.min(Math.max(Number(body.limit) || 1000, 1), 25000);
     const batchNum = Math.max(Number(body.batch_num) || 1, 1);
-    const from = (batchNum - 1) * batchSize;
-    const to = from + batchSize - 1;
-    let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
-    const { data, error } = await q.order('id', { ascending: false }).range(from, to);
-    if (error) throw error;
-    allData = (data as unknown as Record<string, unknown>[]) || [];
+    const baseOffset = (batchNum - 1) * requestedLimit;
+    const CHUNK_SIZE = 1000;
+    const totalChunks = Math.ceil(requestedLimit / CHUNK_SIZE);
+
+    const chunkPromises = [];
+    for (let c = 0; c < totalChunks; c++) {
+      const chunkFrom = baseOffset + c * CHUNK_SIZE;
+      const thisChunkSize = Math.min(CHUNK_SIZE, requestedLimit - c * CHUNK_SIZE);
+      const chunkTo = chunkFrom + thisChunkSize - 1;
+
+      let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
+      chunkPromises.push(q.order('id', { ascending: false }).range(chunkFrom, chunkTo));
+    }
+
+    const chunkResults = await Promise.all(chunkPromises);
+    for (const res of chunkResults) {
+      if (res.error) throw res.error;
+      if (res.data) allData.push(...(res.data as unknown as Record<string, unknown>[]));
+    }
+  }
+
+  // Determine dynamic, professional filename
+  let filename = `leadbase_export_${allData.length}_leads_${dateStr}.${format === 'excel' ? 'csv' : format}`;
+  if (scope === 'selected') {
+    if (allData.length === 1) {
+      const rawName = String(allData[0]?.legal_name || 'lead').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+      filename = `lead_${allData[0]?.usdot_number || 'export'}_${rawName}.${format === 'excel' ? 'csv' : format}`;
+    } else {
+      filename = `leadbase_selected_${allData.length}_leads_${dateStr}.${format === 'excel' ? 'csv' : format}`;
+    }
+  } else if (scope === 'current_page') {
+    filename = `leadbase_page_${allData.length}_leads_${dateStr}.${format === 'excel' ? 'csv' : format}`;
   }
 
   // ── Build Output ──────────────────────────────────────────────────────────
@@ -122,7 +152,8 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
 
   const headerRow = requestedColumns.map(c => csvEscapeValue(COLUMN_LABELS[c] || c)).join(',');
   const rows = allData.map(item => buildCsvRow(item, requestedColumns));
-  const csvContent = [headerRow, ...rows].join('\n');
+  // Include UTF-8 BOM (\uFEFF) so Excel & Sheets open accents, quotes, and commas flawlessly
+  const csvContent = '\uFEFF' + [headerRow, ...rows].join('\n');
 
   return new NextResponse(csvContent, {
     headers: {
@@ -132,9 +163,7 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
   });
 }
 
-// ── GET: browser-native download via window.open / direct navigation ──────
-// Frontend calls: window.open('/api/export?d=BASE64_JSON')
-// This avoids all fetch+blob async download issues completely.
+// ── GET handler ───────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
     const d = req.nextUrl.searchParams.get('d');
@@ -150,7 +179,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ── POST: kept for compatibility ──────────────────────────────────────────
+// ── POST handler ──────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

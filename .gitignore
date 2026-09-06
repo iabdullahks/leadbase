@@ -12,4 +12,8 @@ temp_*_data.json
 .next/
 node_modules/
 .vercel
-
+scratch/
+*.tsbuildinfo
+motus_scraper_state*.json
+import_progress.json
+.temp/

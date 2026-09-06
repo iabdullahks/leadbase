@@ -11,7 +11,6 @@ interface ExportModalProps {
   selectedCount: number;
   currentPageCount: number;
   selectedIds: string[];
-  /** IDs of the rows currently visible on the page — used for accurate current-page export */
   currentPageIds?: string[];
 }
 
@@ -32,6 +31,8 @@ const ALL_COLUMNS = [
   { id: 'profile_url', label: 'MOTUS Profile Link' },
 ];
 
+const BATCH_SIZE_OPTIONS = [1000, 2500, 5000, 10000];
+
 export default function ExportModal({
   isOpen,
   onClose,
@@ -47,19 +48,20 @@ export default function ExportModal({
     selectedCount > 0 ? 'selected' : 'all_matching'
   );
   const [selectedCols, setSelectedCols] = useState<string[]>(ALL_COLUMNS.map(c => c.id));
-  const BATCH_SIZE = 1000;
-  const totalBatches = Math.max(1, Math.ceil(matchingCount / BATCH_SIZE));
-  const [batchNum, setBatchNum] = useState(1);
+  const [batchSize, setBatchSize] = useState<number>(1000);
+  const [batchNum, setBatchNum] = useState<number>(1);
   const [downloadedBatches, setDownloadedBatches] = useState<Set<number>>(new Set());
-  const [isExporting, setIsExporting] = useState(false);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<'idle' | 'fetching' | 'success'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const totalBatches = Math.max(1, Math.ceil(matchingCount / batchSize));
 
   // Sync scope when selectedCount changes
   useEffect(() => {
     if (isOpen) {
       if (selectedCount > 0) {
-        setScope(prev => prev === 'all_matching' ? 'selected' : prev);
+        setScope('selected');
       } else {
         setScope(prev => prev === 'selected' ? 'all_matching' : prev);
       }
@@ -89,16 +91,15 @@ export default function ExportModal({
   const exportRecordCount =
     scope === 'selected' ? selectedCount :
     scope === 'current_page' ? currentPageCount :
-    Math.min(BATCH_SIZE, Math.max(0, matchingCount - (batchNum - 1) * BATCH_SIZE));
+    Math.min(batchSize, Math.max(0, matchingCount - (batchNum - 1) * batchSize));
 
-  function handleExport() {
+  async function handleExport() {
     if (selectedCols.length === 0) return;
     setIsExporting(true);
     setExportProgress('fetching');
     setErrorMessage(null);
 
     try {
-      // Build the export params and base64-encode them
       const params = {
         filters,
         format,
@@ -106,22 +107,53 @@ export default function ExportModal({
         selected_ids: selectedIds,
         columns: selectedCols,
         current_page_ids: scope === 'current_page' ? currentPageIds : [],
-        limit: BATCH_SIZE,
+        limit: batchSize,
         batch_num: scope === 'all_matching' ? batchNum : 1,
       };
-      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(params))));
-      const url = `/api/export?d=${encoded}`;
 
-      // Open the URL directly — browser handles it as a file download natively.
-      // This is the same as clicking a real <a href="..."> download link.
-      window.open(url, '_blank');
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
 
-      // Mark success immediately (download is in flight in the new tab)
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Export failed (HTTP ${res.status})`);
+      }
+
+      // Read Content-Disposition header to get server filename
+      let fileName = `leadbase_export_${exportRecordCount}_leads_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
+      const disposition = res.headers.get('Content-Disposition');
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename="?([^";]+)"?/);
+        if (match?.[1]) fileName = match[1];
+      }
+
+      const blob = await res.blob();
+      if (!blob || blob.size === 0) {
+        throw new Error('Server returned an empty export file. Please check your filters.');
+      }
+
+      // Browser-native Blob download — 100% reliable, zero popup block, zero navigation cancellation
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.style.display = 'none';
+      link.href = blobUrl;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+
+      // Clean up blob URL after small delay
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 3000);
+
       setExportProgress('success');
       setDownloadedBatches(prev => new Set(prev).add(batchNum));
 
-      // Log to export history (fire-and-forget)
-      const fileName = `leadbase_batch${batchNum}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
+      // Fire-and-forget export history log
       fetch('/api/export-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -129,16 +161,17 @@ export default function ExportModal({
           file_name: fileName,
           format,
           record_count: exportRecordCount,
-          filter_summary: `Batch ${batchNum}/${totalBatches} — ${exportRecordCount} rows (${format.toUpperCase()})`,
+          filter_summary: scope === 'all_matching'
+            ? `Batch ${batchNum}/${totalBatches} (${exportRecordCount} leads)`
+            : `${exportRecordCount} ${scope} leads`,
           filter_state: filters,
         }),
       }).catch(e => console.warn('History log warning:', e));
 
-      // Auto-advance to next batch
       setTimeout(() => {
         setExportProgress('idle');
         setIsExporting(false);
-        if (batchNum < totalBatches) {
+        if (scope === 'all_matching' && batchNum < totalBatches) {
           setBatchNum(b => b + 1);
         }
       }, 1500);
@@ -153,12 +186,12 @@ export default function ExportModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px' }}>
+      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '620px' }}>
         <div className="modal-header">
           <div>
-            <div className="modal-title">📥 Export Carriers</div>
+            <div className="modal-title">📥 Export Leads to CSV</div>
             <div className="modal-sub">
-              <strong>{exportRecordCount.toLocaleString()}</strong> carriers ready for export
+              <strong>{exportRecordCount.toLocaleString()}</strong> carriers ready for immediate export
             </div>
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
@@ -170,8 +203,7 @@ export default function ExportModal({
               background: 'rgba(239,68,68,0.12)',
               border: '1px solid rgba(239,68,68,0.4)',
               borderRadius: '8px',
-              padding: '0.7rem 1rem',
-              marginBottom: '1rem',
+              padding: '0.75rem 1rem',
               color: '#fca5a5',
               fontSize: '0.83rem',
             }}>
@@ -179,14 +211,14 @@ export default function ExportModal({
             </div>
           )}
 
-          {/* Format selection */}
+          {/* 1. File Format */}
           <div className="ex-group">
             <label className="modal-label">1. File Format</label>
             <div className="ex-radio-cards">
               {[
-                { id: 'csv', label: 'CSV', desc: 'Standard CSV file' },
-                { id: 'excel', label: 'Excel (XLSX)', desc: 'CSV optimized for Microsoft Excel' },
-                { id: 'json', label: 'JSON', desc: 'Structured JSON objects' },
+                { id: 'csv', label: 'CSV', desc: 'Universal CSV (UTF-8)' },
+                { id: 'excel', label: 'Excel CSV', desc: 'Optimized for MS Excel' },
+                { id: 'json', label: 'JSON', desc: 'Raw structured JSON' },
               ].map(f => (
                 <label key={f.id} className={`ex-card ${format === f.id ? 'active' : ''}`}>
                   <input
@@ -204,59 +236,10 @@ export default function ExportModal({
             </div>
           </div>
 
-          {/* Scope selection */}
+          {/* 2. Target Scope */}
           <div className="ex-group">
-            <label className="modal-label">2. Target Records</label>
+            <label className="modal-label">2. Target Scope</label>
             <div className="ex-scope-list">
-              <label className={`ex-scope-item ${scope === 'all_matching' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="scope"
-                  checked={scope === 'all_matching'}
-                  onChange={() => setScope('all_matching')}
-                />
-                <div style={{ width: '100%' }}>
-                  <strong>All {matchingCount.toLocaleString()} matching carriers</strong>
-                  <span className="ex-subtext">1,000 per batch · {totalBatches} batch{totalBatches !== 1 ? 'es' : ''} total</span>
-                  {scope === 'all_matching' && totalBatches > 1 && (
-                    <div style={{ marginTop: '0.6rem' }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: '0.35rem' }}>Select batch to download:</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                        {Array.from({ length: totalBatches }, (_, i) => i + 1).map(n => {
-                          const isDone = downloadedBatches.has(n);
-                          const isCurrent = batchNum === n;
-                          const from = (n - 1) * BATCH_SIZE + 1;
-                          const to = Math.min(n * BATCH_SIZE, matchingCount);
-                          return (
-                            <button
-                              key={n}
-                              type="button"
-                              title={`Rows ${from.toLocaleString()}–${to.toLocaleString()}`}
-                              onClick={e => { e.preventDefault(); setBatchNum(n); }}
-                              style={{
-                                padding: '0.2rem 0.55rem',
-                                fontSize: '0.72rem',
-                                borderRadius: '5px',
-                                border: isCurrent ? '1px solid var(--cyan)' : isDone ? '1px solid rgba(52,211,153,0.5)' : '1px solid var(--border)',
-                                background: isCurrent ? 'rgba(34,211,238,0.15)' : isDone ? 'rgba(52,211,153,0.1)' : 'var(--bg2)',
-                                color: isCurrent ? 'var(--cyan)' : isDone ? '#34d399' : 'var(--muted2)',
-                                cursor: 'pointer',
-                                fontWeight: isCurrent ? 700 : 400,
-                              }}
-                            >
-                              {isDone ? `✓ ${n}` : n}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.3rem' }}>
-                        Batch {batchNum}: rows {((batchNum - 1) * BATCH_SIZE + 1).toLocaleString()}–{Math.min(batchNum * BATCH_SIZE, matchingCount).toLocaleString()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </label>
-
               {selectedCount > 0 && (
                 <label className={`ex-scope-item ${scope === 'selected' ? 'active' : ''}`}>
                   <input
@@ -267,10 +250,87 @@ export default function ExportModal({
                   />
                   <div>
                     <strong>{selectedCount.toLocaleString()} selected records</strong>
-                    <span className="ex-subtext">Exports only rows you manually checked</span>
+                    <span className="ex-subtext">Exports only the specific leads you manually checked</span>
                   </div>
                 </label>
               )}
+
+              <label className={`ex-scope-item ${scope === 'all_matching' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="scope"
+                  checked={scope === 'all_matching'}
+                  onChange={() => setScope('all_matching')}
+                />
+                <div style={{ width: '100%' }}>
+                  <strong>All {matchingCount.toLocaleString()} matching carriers</strong>
+                  <span className="ex-subtext">Export in high-speed chunks (select chunk size below)</span>
+
+                  {scope === 'all_matching' && (
+                    <div style={{ marginTop: '0.75rem', padding: '0.65rem 0.8rem', background: 'rgba(255,255,255,0.025)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text)' }}>Bulk Export Size:</span>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--muted2)' }}>{totalBatches} total batch{totalBatches !== 1 ? 'es' : ''}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {BATCH_SIZE_OPTIONS.map(sz => (
+                          <button
+                            key={sz}
+                            type="button"
+                            onClick={() => { setBatchSize(sz); setBatchNum(1); }}
+                            style={{
+                              padding: '0.3rem 0.65rem',
+                              fontSize: '0.74rem',
+                              borderRadius: '6px',
+                              border: batchSize === sz ? '1px solid var(--cyan)' : '1px solid var(--border)',
+                              background: batchSize === sz ? 'rgba(34,211,238,0.18)' : 'var(--bg)',
+                              color: batchSize === sz ? 'var(--cyan)' : 'var(--muted2)',
+                              cursor: 'pointer',
+                              fontWeight: batchSize === sz ? 700 : 500,
+                            }}
+                          >
+                            {sz.toLocaleString()} rows / batch
+                          </button>
+                        ))}
+                      </div>
+
+                      {totalBatches > 1 && (
+                        <div style={{ marginTop: '0.6rem' }}>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginBottom: '0.35rem' }}>Select batch number:</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', maxHeight: '100px', overflowY: 'auto' }}>
+                            {Array.from({ length: Math.min(totalBatches, 50) }, (_, i) => i + 1).map(n => {
+                              const isDone = downloadedBatches.has(n);
+                              const isCurrent = batchNum === n;
+                              return (
+                                <button
+                                  key={n}
+                                  type="button"
+                                  onClick={() => setBatchNum(n)}
+                                  style={{
+                                    padding: '0.2rem 0.5rem',
+                                    fontSize: '0.72rem',
+                                    borderRadius: '5px',
+                                    border: isCurrent ? '1px solid var(--cyan)' : isDone ? '1px solid rgba(52,211,153,0.5)' : '1px solid var(--border)',
+                                    background: isCurrent ? 'rgba(34,211,238,0.15)' : isDone ? 'rgba(52,211,153,0.1)' : 'var(--bg)',
+                                    color: isCurrent ? 'var(--cyan)' : isDone ? '#34d399' : 'var(--muted2)',
+                                    cursor: 'pointer',
+                                    fontWeight: isCurrent ? 700 : 400,
+                                  }}
+                                >
+                                  {isDone ? `✓ ${n}` : n}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.35rem' }}>
+                            Batch {batchNum}: rows {((batchNum - 1) * batchSize + 1).toLocaleString()}–{Math.min(batchNum * batchSize, matchingCount).toLocaleString()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </label>
 
               <label className={`ex-scope-item ${scope === 'current_page' ? 'active' : ''}`}>
                 <input
@@ -281,13 +341,13 @@ export default function ExportModal({
                 />
                 <div>
                   <strong>Current page ({currentPageCount} records)</strong>
-                  <span className="ex-subtext">Exports only the currently visible {currentPageCount} rows</span>
+                  <span className="ex-subtext">Exports only the currently visible {currentPageCount} rows on this page</span>
                 </div>
               </label>
             </div>
           </div>
 
-          {/* Column selector */}
+          {/* 3. Export Fields */}
           <div className="ex-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
               <label className="modal-label" style={{ marginBottom: 0 }}>3. Select Export Fields ({selectedCols.length})</label>
@@ -311,49 +371,28 @@ export default function ExportModal({
             </div>
           </div>
 
-          {/* Active Export Status Banner */}
+          {/* Live Progress Banner */}
           {isExporting && (
             <div style={{
-              marginTop: '1rem',
               padding: '0.75rem 1rem',
               background: 'rgba(34, 211, 238, 0.08)',
-              border: '1px solid rgba(34, 211, 238, 0.25)',
+              border: '1px solid rgba(34, 211, 238, 0.3)',
               borderRadius: '8px',
               display: 'flex',
               alignItems: 'center',
               gap: '0.75rem'
             }}>
-              <span style={{ fontSize: '1.2rem', display: 'inline-block' }}>⚡</span>
+              <span className="spinner" style={{ width: '18px', height: '18px' }} />
               <div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--cyan)' }}>
                   {exportProgress === 'success'
-                    ? `✓ Batch ${batchNum} downloaded!${batchNum < totalBatches ? ` Advancing to batch ${batchNum + 1}…` : ' All done!'}`
-                    : `Fetching batch ${batchNum}/${totalBatches} (${exportRecordCount.toLocaleString()} rows)…`}
+                    ? `✓ Download completed!`
+                    : `Fetching ${exportRecordCount.toLocaleString()} leads from Supabase...`}
                 </div>
                 <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
-                  {exportProgress === 'success'
-                    ? 'Your browser will save the file momentarily.'
-                    : `Rows ${((batchNum - 1) * BATCH_SIZE + 1).toLocaleString()}–${Math.min(batchNum * BATCH_SIZE, matchingCount).toLocaleString()} · ${format.toUpperCase()}`}
+                  Processing data chunks in parallel and preparing CSV stream...
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* Batch progress summary */}
-          {downloadedBatches.size > 0 && !isExporting && (
-            <div style={{
-              marginTop: '0.75rem',
-              padding: '0.5rem 0.75rem',
-              background: 'rgba(52,211,153,0.07)',
-              border: '1px solid rgba(52,211,153,0.25)',
-              borderRadius: '7px',
-              fontSize: '0.76rem',
-              color: '#34d399',
-            }}>
-              ✓ {downloadedBatches.size}/{totalBatches} batch{downloadedBatches.size !== 1 ? 'es' : ''} downloaded
-              {downloadedBatches.size < totalBatches && (
-                <span style={{ color: 'var(--muted)', marginLeft: '0.4rem' }}>· {totalBatches - downloadedBatches.size} remaining</span>
-              )}
             </div>
           )}
         </div>
@@ -366,12 +405,10 @@ export default function ExportModal({
             disabled={isExporting || selectedCols.length === 0}
           >
             {exportProgress === 'success'
-              ? `✓ Batch ${batchNum} Done!`
+              ? '✓ Downloaded!'
               : isExporting
-              ? '⏳ Exporting…'
-              : scope === 'all_matching' && totalBatches > 1
-              ? `Download Batch ${batchNum} (${exportRecordCount.toLocaleString()} leads)`
-              : `Export ${exportRecordCount.toLocaleString()} Carriers`}
+              ? '⏳ Fetching & Downloading...'
+              : `📥 Export ${exportRecordCount.toLocaleString()} Carriers (${format.toUpperCase()})`}
           </button>
         </div>
       </div>
