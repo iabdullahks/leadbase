@@ -40,6 +40,10 @@ export default function FilterChips({
   if (filters.dba_name?.trim()) {
     chips.push({ key: 'dba_name', label: `DBA: ${filters.dba_name.trim()}` });
   }
+  // BUG FIX: also show chip for legal_name when set directly (e.g. from advanced search)
+  if (filters.legal_name?.trim()) {
+    chips.push({ key: 'legal_name', label: `Legal Name: ${filters.legal_name.trim()}` });
+  }
 
   (filters.carrier_statuses || []).forEach(st => {
     chips.push({ key: 'carrier_statuses', label: `Status: ${st}`, val: st });
@@ -57,8 +61,13 @@ export default function FilterChips({
     chips.push({ key: 'has_email', label: 'No Email' });
   }
 
+  // BUG FIX: Show chips for ALL contact_completeness values, not just 'phone_email'
   if (filters.contact_completeness === 'phone_email') {
     chips.push({ key: 'contact_completeness', label: 'Phone + Email Required' });
+  } else if (filters.contact_completeness === 'any') {
+    chips.push({ key: 'contact_completeness', label: 'Has Phone or Email' });
+  } else if (filters.contact_completeness === 'none') {
+    chips.push({ key: 'contact_completeness', label: 'Missing Both Phone & Email' });
   }
 
   (filters.states || []).forEach(st => {
@@ -75,7 +84,7 @@ export default function FilterChips({
   // Equipment chips
   if (filters.equipment_mode === 'no_equipment' || (filters.equipment_types || []).includes('No Equipment')) {
     chips.push({ key: 'equipment_mode', label: 'Equipment: No Equipment', val: 'no_equipment' });
-  } else if (filters.equipment_mode === 'has_equipment') {
+  } else if (filters.equipment_mode === 'has_equipment' && (!filters.equipment_types || filters.equipment_types.length === 0)) {
     chips.push({ key: 'equipment_mode', label: 'Equipment: Has Equipment', val: 'has_equipment' });
   }
 
@@ -95,7 +104,7 @@ export default function FilterChips({
       last_90d: `${fieldPrefix}: Last 90 Days`,
       this_month: `${fieldPrefix}: This Month`,
       last_month: `${fieldPrefix}: Last Month`,
-      custom: `${fieldPrefix}: ${filters.date_from || ''} → ${filters.date_to || ''}`
+      custom: `${fieldPrefix}: ${filters.date_from || '?'} → ${filters.date_to || '?'}`,
     };
     chips.push({ key: 'date_preset', label: presetLabels[filters.date_preset] || filters.date_preset });
   }

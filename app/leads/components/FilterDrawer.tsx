@@ -307,12 +307,16 @@ export default function FilterDrawer({
             </div>
             {expandedSections.contact && (
               <div className="fp-sec-content">
+                {/* Has Phone / Has Email — positive filters */}
                 <div className="fp-grid-2">
                   <label className={`fp-chip-check ${draft.has_phone === true ? 'selected' : ''}`}>
                     <input
                       type="checkbox"
                       checked={draft.has_phone === true}
-                      onChange={e => setDraft({ ...draft, has_phone: e.target.checked ? true : null })}
+                      onChange={e => {
+                        // Tri-state: if already true, uncheck (null). Never set false here.
+                        setDraft({ ...draft, has_phone: e.target.checked ? true : null });
+                      }}
                     />
                     📞 Has Phone Number
                   </label>
@@ -323,6 +327,29 @@ export default function FilterDrawer({
                       onChange={e => setDraft({ ...draft, has_email: e.target.checked ? true : null })}
                     />
                     ✉️ Has Email Address
+                  </label>
+                </div>
+                {/* No Phone / No Email — negative filters (allows filtering for missing contact info) */}
+                <div className="fp-grid-2" style={{ marginTop: '0.5rem' }}>
+                  <label className={`fp-chip-check ${draft.has_phone === false ? 'selected' : ''}`}
+                    style={{ borderColor: draft.has_phone === false ? 'rgba(239,68,68,0.6)' : undefined,
+                             background: draft.has_phone === false ? 'rgba(239,68,68,0.1)' : undefined }}>
+                    <input
+                      type="checkbox"
+                      checked={draft.has_phone === false}
+                      onChange={e => setDraft({ ...draft, has_phone: e.target.checked ? false : null })}
+                    />
+                    🚫 No Phone (Missing)
+                  </label>
+                  <label className={`fp-chip-check ${draft.has_email === false ? 'selected' : ''}`}
+                    style={{ borderColor: draft.has_email === false ? 'rgba(239,68,68,0.6)' : undefined,
+                             background: draft.has_email === false ? 'rgba(239,68,68,0.1)' : undefined }}>
+                    <input
+                      type="checkbox"
+                      checked={draft.has_email === false}
+                      onChange={e => setDraft({ ...draft, has_email: e.target.checked ? false : null })}
+                    />
+                    🚫 No Email (Missing)
                   </label>
                 </div>
                 <div style={{ marginTop: '0.8rem' }}>

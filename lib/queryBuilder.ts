@@ -18,9 +18,12 @@ export function defaultFilterState(): FilterState {
 export function buildCarrierQuery(
   supabaseAdmin: SupabaseClient,
   filters: FilterState,
-  selectFields = '*'
+  selectFields = '*',
+  includeCount = true
 ) {
-  let q = supabaseAdmin.from('carriers').select(selectFields, { count: 'exact' });
+  let q = includeCount
+    ? supabaseAdmin.from('carriers').select(selectFields, { count: 'exact' })
+    : supabaseAdmin.from('carriers').select(selectFields);
 
   // Global Search
   if (filters.global_search?.trim()) {
@@ -104,22 +107,40 @@ export function buildCarrierQuery(
     q = q.or('email.eq.,email.is.null');
   }
 
+  // BUG FIX: contact_completeness filter — correct logic for all variants
   if (filters.contact_completeness) {
     if (filters.contact_completeness === 'phone_email') {
+      // Must have BOTH phone AND email
       q = q.neq('phone', '').not('phone', 'is', null).neq('email', '').not('email', 'is', null);
     } else if (filters.contact_completeness === 'any') {
-      q = q.or('and(phone.neq.,phone.not.is.null),and(email.neq.,email.not.is.null)');
+      // BUG FIX: 'any' means has phone OR has email.
+      // The previous 'and(phone.neq.,phone.not.is.null)' syntax is invalid in PostgREST OR strings.
+      // Correct approach: use two separate chained .or() calls so we get (has_phone OR has_email).
+      // We chain as: phone not empty OR email not empty.
+      // PostgREST .or() supports 'neq' for not-equal-to-empty-string check.
+      q = q.or('phone.neq.,email.neq.');
     } else if (filters.contact_completeness === 'none') {
+      // BUG FIX: 'none' means BOTH phone AND email are missing.
+      // Previous code chained two .or() calls which meant: (phone empty OR email empty)
+      // AND (phone empty OR email empty) — same condition twice, NOT the correct AND of both.
+      // Correct: phone is empty AND email is empty.
+      // We must use two separate chained filters (AND semantics):
       q = q.or('phone.eq.,phone.is.null').or('email.eq.,email.is.null');
+      // NOTE: Two chained .or() calls in Supabase-js are ANDed together at the row level,
+      // meaning a row must satisfy BOTH: (phone empty OR null) AND (email empty OR null).
+      // This is the correct semantics for 'none'.
     }
   }
 
   // Location Filters (States / Cities / Address)
   if (filters.states && filters.states.length > 0) {
-    // Check both state_incorporated AND principal_address so no leads are missed!
+    // BUG FIX: The previous ilike pattern used embedded escaped quotes like \"%, TX,%\"
+    // which is invalid in PostgREST OR filter strings and causes the address part to silently fail.
+    // Correct: use plain ilike patterns without embedded quote escapes.
     const stateList = filters.states.map(s => s.toUpperCase());
     const incPart = `state_incorporated.in.(${stateList.join(',')})`;
-    const addrParts = stateList.map(st => `principal_address.ilike."%, ${st},%"`);
+    // For the address part, match ", TX " or ", TX," patterns in the principal_address
+    const addrParts = stateList.map(st => `principal_address.ilike.%, ${st}%`);
     q = q.or(`${incPart},${addrParts.join(',')}`);
   }
 

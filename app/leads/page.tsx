@@ -144,6 +144,17 @@ export default function LeadsPage() {
       delete next.date_to;
     } else if (key === 'advanced_rules') {
       next.advanced_rules = (next.advanced_rules || []).filter(r => r.id !== val);
+    } else if (key === 'has_phone') {
+      // Remove phone filter entirely (set to null = no filter)
+      next.has_phone = null;
+    } else if (key === 'has_email') {
+      // Remove email filter entirely (set to null = no filter)
+      next.has_email = null;
+    } else if (key === 'contact_completeness') {
+      // Clear contact_completeness filter
+      next.contact_completeness = '';
+    } else if (key === 'legal_name') {
+      delete next.legal_name;
     } else {
       delete (next as Record<string, unknown>)[key];
     }
@@ -477,6 +488,7 @@ export default function LeadsPage() {
         selectedCount={selectedIds.length}
         currentPageCount={leads.length}
         selectedIds={selectedIds}
+        currentPageIds={leads.map(l => l.usdot_number)}
       />
 
       <ExportHistoryDrawer

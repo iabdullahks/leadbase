@@ -42,18 +42,27 @@ export default function EquipmentDropdown({ filters, onChange }: EquipmentDropdo
   // Determine current selection
   const isNoEquipment =
     (filters.equipment_types || []).includes('No Equipment') || filters.equipment_mode === 'no_equipment';
-  const isSingleType = (filters.equipment_types || []).length === 1 && !isNoEquipment;
-  const singleVal = isSingleType ? filters.equipment_types[0] : null;
+  const equipmentTypeCount = (filters.equipment_types || []).filter(
+    e => e !== 'No Equipment' && e !== 'Both' && e !== 'All / Non-Filter' && e !== 'All'
+  ).length;
+  const isSingleType = equipmentTypeCount === 1 && !isNoEquipment;
+  const isMultiType = equipmentTypeCount > 1 && !isNoEquipment;
+  const singleVal = isSingleType ? filters.equipment_types.find(
+    e => e !== 'No Equipment' && e !== 'Both' && e !== 'All / Non-Filter' && e !== 'All'
+  ) ?? null : null;
   const isHasEquipment =
     filters.equipment_mode === 'has_equipment' &&
     (!filters.equipment_types || filters.equipment_types.length === 0);
 
   let currentVal = 'both';
   if (isNoEquipment) currentVal = 'no_equipment';
+  else if (isMultiType) currentVal = '__multi__'; // Special sentinel for multi-type
   else if (singleVal) currentVal = singleVal;
   else if (isHasEquipment) currentVal = 'has_equipment';
 
-  const selectedOpt = EQUIPMENT_OPTIONS.find(o => o.value === currentVal) || EQUIPMENT_OPTIONS[0];
+  const selectedOpt = currentVal === '__multi__'
+    ? { icon: '🚛', label: `Multiple Types (${equipmentTypeCount})`, value: '__multi__' }
+    : EQUIPMENT_OPTIONS.find(o => o.value === currentVal) || EQUIPMENT_OPTIONS[0];
   const isActive = currentVal !== 'both';
 
   // Click outside listener
