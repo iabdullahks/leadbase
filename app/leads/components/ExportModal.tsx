@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FilterState, ExportOptions } from '@/lib/types';
+import { FilterState } from '@/lib/types';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -46,8 +46,11 @@ export default function ExportModal({
   const [scope, setScope] = useState<'all_matching' | 'selected' | 'current_page'>(
     selectedCount > 0 ? 'selected' : 'all_matching'
   );
-  const [exportLimit, setExportLimit] = useState<number>(1000);
   const [selectedCols, setSelectedCols] = useState<string[]>(ALL_COLUMNS.map(c => c.id));
+  const BATCH_SIZE = 1000;
+  const totalBatches = Math.max(1, Math.ceil(matchingCount / BATCH_SIZE));
+  const [batchNum, setBatchNum] = useState(1);
+  const [downloadedBatches, setDownloadedBatches] = useState<Set<number>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<'idle' | 'fetching' | 'success'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -84,8 +87,9 @@ export default function ExportModal({
   }
 
   const exportRecordCount =
-    scope === 'all_matching' ? Math.min(matchingCount, exportLimit) :
-    scope === 'selected' ? selectedCount : currentPageCount;
+    scope === 'selected' ? selectedCount :
+    scope === 'current_page' ? currentPageCount :
+    Math.min(BATCH_SIZE, Math.max(0, matchingCount - (batchNum - 1) * BATCH_SIZE));
 
   async function handleExport() {
     if (selectedCols.length === 0) return;
@@ -94,21 +98,18 @@ export default function ExportModal({
     setErrorMessage(null);
 
     try {
-      const opts: ExportOptions = {
-        format,
-        scope,
-        selected_ids: selectedIds,
-        columns: selectedCols,
-      };
-
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filters,
-          limit: scope === 'all_matching' ? exportLimit : undefined,
+          format,
+          scope,
+          selected_ids: selectedIds,
+          columns: selectedCols,
           current_page_ids: scope === 'current_page' ? currentPageIds : [],
-          ...opts,
+          limit: BATCH_SIZE,
+          batch_num: scope === 'all_matching' ? batchNum : 1,
         }),
       });
 
@@ -122,11 +123,15 @@ export default function ExportModal({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `leadbase_carriers_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
+      a.download = `leadbase_batch${batchNum}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      // Mark this batch as downloaded
+      const nextDownloaded = new Set(downloadedBatches).add(batchNum);
+      setDownloadedBatches(nextDownloaded);
 
       // Log to export history
       try {
@@ -137,7 +142,7 @@ export default function ExportModal({
             file_name: a.download,
             format,
             record_count: exportRecordCount,
-            filter_summary: `${exportRecordCount} rows (${format.toUpperCase()})`,
+            filter_summary: `Batch ${batchNum}/${totalBatches} — ${exportRecordCount} rows (${format.toUpperCase()})`,
             filter_state: filters,
           }),
         });
@@ -145,10 +150,15 @@ export default function ExportModal({
         console.warn('History log warning:', logErr);
       }
 
-      // Brief delay so user sees success confirmation before closing
+      // Auto-advance to next batch if more remain
       setTimeout(() => {
-        onClose();
+        setExportProgress('idle');
+        setIsExporting(false);
+        if (batchNum < totalBatches) {
+          setBatchNum(batchNum + 1);
+        }
       }, 700);
+      return; // skip the finally setIsExporting below (handled in setTimeout)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Export failed. Please check server logs.';
       setErrorMessage(msg);
@@ -222,30 +232,43 @@ export default function ExportModal({
                   checked={scope === 'all_matching'}
                   onChange={() => setScope('all_matching')}
                 />
-                <div>
+                <div style={{ width: '100%' }}>
                   <strong>All {matchingCount.toLocaleString()} matching carriers</strong>
-                  <span className="ex-subtext">Exports carriers matching your active filters</span>
-                  {matchingCount > 500 && (
-                    <div style={{ marginTop: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--muted)' }}>Limit:</span>
-                      {[500, 1000, 2500, 5000, 10000, 25000].map(lim => (
-                        <button
-                          key={lim}
-                          type="button"
-                          onClick={e => { e.preventDefault(); setExportLimit(lim); }}
-                          style={{
-                            padding: '0.2rem 0.5rem',
-                            fontSize: '0.72rem',
-                            borderRadius: '5px',
-                            border: exportLimit === lim ? '1px solid var(--cyan)' : '1px solid var(--border)',
-                            background: exportLimit === lim ? 'rgba(34,211,238,0.15)' : 'var(--bg2)',
-                            color: exportLimit === lim ? 'var(--cyan)' : 'var(--muted2)',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {lim.toLocaleString()}
-                        </button>
-                      ))}
+                  <span className="ex-subtext">1,000 per batch · {totalBatches} batch{totalBatches !== 1 ? 'es' : ''} total</span>
+                  {scope === 'all_matching' && totalBatches > 1 && (
+                    <div style={{ marginTop: '0.6rem' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginBottom: '0.35rem' }}>Select batch to download:</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                        {Array.from({ length: totalBatches }, (_, i) => i + 1).map(n => {
+                          const isDone = downloadedBatches.has(n);
+                          const isCurrent = batchNum === n;
+                          const from = (n - 1) * BATCH_SIZE + 1;
+                          const to = Math.min(n * BATCH_SIZE, matchingCount);
+                          return (
+                            <button
+                              key={n}
+                              type="button"
+                              title={`Rows ${from.toLocaleString()}–${to.toLocaleString()}`}
+                              onClick={e => { e.preventDefault(); setBatchNum(n); }}
+                              style={{
+                                padding: '0.2rem 0.55rem',
+                                fontSize: '0.72rem',
+                                borderRadius: '5px',
+                                border: isCurrent ? '1px solid var(--cyan)' : isDone ? '1px solid rgba(52,211,153,0.5)' : '1px solid var(--border)',
+                                background: isCurrent ? 'rgba(34,211,238,0.15)' : isDone ? 'rgba(52,211,153,0.1)' : 'var(--bg2)',
+                                color: isCurrent ? 'var(--cyan)' : isDone ? '#34d399' : 'var(--muted2)',
+                                cursor: 'pointer',
+                                fontWeight: isCurrent ? 700 : 400,
+                              }}
+                            >
+                              {isDone ? `✓ ${n}` : n}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.3rem' }}>
+                        Batch {batchNum}: rows {((batchNum - 1) * BATCH_SIZE + 1).toLocaleString()}–{Math.min(batchNum * BATCH_SIZE, matchingCount).toLocaleString()}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -321,15 +344,33 @@ export default function ExportModal({
               <div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--cyan)' }}>
                   {exportProgress === 'success'
-                    ? '✓ File prepared! Starting download…'
-                    : `Compiling ${exportRecordCount.toLocaleString()} leads (${format.toUpperCase()})…`}
+                    ? `✓ Batch ${batchNum} downloaded!${batchNum < totalBatches ? ` Advancing to batch ${batchNum + 1}…` : ' All done!'}`
+                    : `Fetching batch ${batchNum}/${totalBatches} (${exportRecordCount.toLocaleString()} rows)…`}
                 </div>
                 <div style={{ fontSize: '0.74rem', color: 'var(--muted)' }}>
                   {exportProgress === 'success'
                     ? 'Your browser will save the file momentarily.'
-                    : 'Fetching carrier fields in high-speed parallel batches…'}
+                    : `Rows ${((batchNum - 1) * BATCH_SIZE + 1).toLocaleString()}–${Math.min(batchNum * BATCH_SIZE, matchingCount).toLocaleString()} · ${format.toUpperCase()}`}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Batch progress summary */}
+          {downloadedBatches.size > 0 && !isExporting && (
+            <div style={{
+              marginTop: '0.75rem',
+              padding: '0.5rem 0.75rem',
+              background: 'rgba(52,211,153,0.07)',
+              border: '1px solid rgba(52,211,153,0.25)',
+              borderRadius: '7px',
+              fontSize: '0.76rem',
+              color: '#34d399',
+            }}>
+              ✓ {downloadedBatches.size}/{totalBatches} batch{downloadedBatches.size !== 1 ? 'es' : ''} downloaded
+              {downloadedBatches.size < totalBatches && (
+                <span style={{ color: 'var(--muted)', marginLeft: '0.4rem' }}>· {totalBatches - downloadedBatches.size} remaining</span>
+              )}
             </div>
           )}
         </div>
@@ -341,7 +382,13 @@ export default function ExportModal({
             onClick={handleExport}
             disabled={isExporting || selectedCols.length === 0}
           >
-            {exportProgress === 'success' ? '✓ Download Started!' : isExporting ? '⏳ Exporting…' : `Export ${exportRecordCount.toLocaleString()} Carriers`}
+            {exportProgress === 'success'
+              ? `✓ Batch ${batchNum} Done!`
+              : isExporting
+              ? '⏳ Exporting…'
+              : scope === 'all_matching' && totalBatches > 1
+              ? `Download Batch ${batchNum} (${exportRecordCount.toLocaleString()} leads)`
+              : `Export ${exportRecordCount.toLocaleString()} Carriers`}
           </button>
         </div>
       </div>

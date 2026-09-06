@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
       'state_incorporated', 'motus_entry_date', 'scraped_at'
     ];
 
-    const filename = `leadbase_export_${new Date().toISOString().slice(0, 10)}.${format === 'excel' ? 'csv' : format}`;
+    const batchNumForFilename = Number(body.batch_num) || 1;
+    const filename = `leadbase_export_${new Date().toISOString().slice(0, 10)}_batch${batchNumForFilename}.${format === 'excel' ? 'csv' : format}`;
     const selectCols = requestedColumns.join(',');
 
     let allData: Record<string, unknown>[] = [];
@@ -100,46 +101,19 @@ export async function POST(req: NextRequest) {
         allData = (data as unknown as Record<string, unknown>[]) || [];
       }
     }
-    // ── Scope: All Matching — High-speed concurrent batch fetching ───────────
+    // ── Scope: All Matching ──────────────────────────────────────────────────
     else {
-      const maxRecords = Math.min(Math.max(Number(body.limit) || 1000, 1), 50000);
-      const batchSize = 1000;
-      const totalBatches = Math.ceil(maxRecords / batchSize);
-      // Run up to 4 batches concurrently for 4x faster export speed
-      const concurrency = 4;
+      const batchSize = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
+      // batch_num is 1-indexed: batch 1 = rows 0–999, batch 2 = rows 1000–1999, etc.
+      const batchNum = Math.max(Number(body.batch_num) || 1, 1);
+      const offset = (batchNum - 1) * batchSize;
+      const from = offset;
+      const to = offset + batchSize - 1;
 
-      for (let i = 0; i < totalBatches; i += concurrency) {
-        const batchIndexes: number[] = [];
-        for (let j = i; j < Math.min(i + concurrency, totalBatches); j++) {
-          batchIndexes.push(j);
-        }
-
-        const chunkPromises = batchIndexes.map(idx => {
-          const from = idx * batchSize;
-          const to = Math.min((idx + 1) * batchSize - 1, maxRecords - 1);
-          let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
-          return q.order('id', { ascending: false }).range(from, to);
-        });
-
-        const results = await Promise.all(chunkPromises);
-        let finished = false;
-
-        for (const res of results) {
-          if (res.error) throw res.error;
-          const data = (res.data as unknown as Record<string, unknown>[]) || [];
-          allData.push(...data);
-          if (data.length < batchSize) {
-            finished = true;
-            break;
-          }
-        }
-
-        if (finished || allData.length >= maxRecords) break;
-      }
-
-      if (allData.length > maxRecords) {
-        allData = allData.slice(0, maxRecords);
-      }
+      let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
+      const { data, error } = await q.order('id', { ascending: false }).range(from, to);
+      if (error) throw error;
+      allData = (data as unknown as Record<string, unknown>[]) || [];
     }
 
     // ── Build Output Format ──────────────────────────────────────────────────
@@ -149,7 +123,6 @@ export async function POST(req: NextRequest) {
         headers: {
           'Content-Type': 'application/json',
           'Content-Disposition': `attachment; filename="${filename}"`,
-          'Content-Length': String(Buffer.byteLength(jsonContent, 'utf-8')),
         },
       });
     }
@@ -163,7 +136,6 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': format === 'excel' ? 'text/csv; charset=utf-8' : 'text/csv',
         'Content-Disposition': `attachment; filename="${filename}"`,
-        'Content-Length': String(Buffer.byteLength(csvContent, 'utf-8')),
       },
     });
 

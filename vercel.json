@@ -1,3 +1,8 @@
 {
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "functions": {
+    "app/api/export/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }
