@@ -62,7 +62,16 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
     'state_incorporated', 'motus_entry_date', 'scraped_at',
   ];
 
-  const selectCols = requestedColumns.join(',');
+  const VALID_DB_COLUMNS = new Set([
+    'id', 'usdot_number', 'legal_name', 'dba_name', 'profile_url',
+    'added_to_motus', 'motus_entry_date', 'motus_last_updated',
+    'carrier_status', 'out_of_service', 'scraped_at', 'updated_at',
+    'principal_address', 'mailing_address', 'phone', 'email',
+    'duns', 'form_of_business', 'state_incorporated', 'new_entrant_status',
+  ]);
+
+  const dbQueryCols = requestedColumns.filter(c => VALID_DB_COLUMNS.has(c));
+  const selectCols = dbQueryCols.length > 0 ? dbQueryCols.join(',') : '*';
   const dateStr = new Date().toISOString().slice(0, 10);
   let allData: Record<string, unknown>[] = [];
 
@@ -71,7 +80,7 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
     const chunkSize = 500;
     const promises = [];
     for (let i = 0; i < selectedIds.length; i += chunkSize) {
-      const chunk = selectedIds.slice(i, i + chunkSize);
+      const chunk = selectedIds.slice(i, i + chunkSize).map(id => String(id).trim());
       promises.push(
         supabaseAdmin
           .from('carriers')
@@ -88,10 +97,11 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
   // ── Scope: Current page visible rows ─────────────────────────────────────
   else if (scope === 'current_page') {
     if (currentPageIds.length > 0) {
+      const pageIds = currentPageIds.map(id => String(id).trim());
       const { data, error } = await supabaseAdmin
         .from('carriers')
         .select(selectCols)
-        .in('usdot_number', currentPageIds);
+        .in('usdot_number', pageIds);
       if (error) throw error;
       allData = (data as unknown as Record<string, unknown>[]) || [];
     } else {

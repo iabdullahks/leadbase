@@ -508,9 +508,9 @@ export default function LeadsPage() {
           onClose={() => setIsExportOpen(false)}
           filters={filters}
           matchingCount={total || 0}
-          selectedCount={selectedIds?.length || 0}
+          selectedCount={selectAllMatching ? 0 : (selectedIds?.length || 0)}
           currentPageCount={leads?.length || 0}
-          selectedIds={selectedIds || []}
+          selectedIds={selectAllMatching ? [] : (selectedIds || [])}
           currentPageIds={(leads || []).map(l => l.usdot_number)}
         />
       </ExportErrorBoundary>

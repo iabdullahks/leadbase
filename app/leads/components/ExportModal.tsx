@@ -18,7 +18,6 @@ const ALL_COLUMNS = [
   { id: 'usdot_number', label: 'USDOT Number' },
   { id: 'legal_name', label: 'Legal Name' },
   { id: 'dba_name', label: 'DBA Name' },
-  { id: 'mc_number', label: 'MC Number' },
   { id: 'phone', label: 'Phone Number' },
   { id: 'email', label: 'Email Address' },
   { id: 'carrier_status', label: 'Carrier Status' },
@@ -32,7 +31,7 @@ const ALL_COLUMNS = [
 ];
 
 const CHUNK_SIZE = 2500; // 2,500 rows per fast sub-query
-const MAX_AUTO_CHUNK_LIMIT = 50000; // Hard cap safety guard: max 50k leads per export stream
+const MAX_AUTO_CHUNK_LIMIT = 75000; // Safe single CSV export limit (supports user's 60k+ leads while protecting against 4M unbounded crashes)
 
 function fmtNum(val: unknown): string {
   const n = Number(val);
@@ -76,15 +75,18 @@ export default function ExportModal({
     ? Math.max(1, Math.ceil(safeMatching / safeBatchSize))
     : 1;
 
+  const activeScope = scope || 'all_matching';
+  const activeMode = exportMode || 'all_stream';
+
   // Determine how many records will be downloaded in the chosen mode
   const targetAllCount = Math.min(safeMatching, MAX_AUTO_CHUNK_LIMIT);
   const exportRecordCount =
-    scope === 'selected' ? safeSelected :
-    scope === 'current_page' ? safeCurrentPage :
-    exportMode === 'all_stream' ? targetAllCount :
+    activeScope === 'selected' ? safeSelected :
+    activeScope === 'current_page' ? safeCurrentPage :
+    activeMode === 'all_stream' ? targetAllCount :
     Math.min(safeBatchSize, Math.max(0, safeMatching - (batchNum - 1) * safeBatchSize));
 
-  const isOverCap = scope === 'all_matching' && safeMatching > MAX_AUTO_CHUNK_LIMIT;
+  const isOverCap = activeScope === 'all_matching' && activeMode === 'all_stream' && safeMatching > MAX_AUTO_CHUNK_LIMIT;
   useEffect(() => {
     if (isOpen) {
       if (safeSelected > 0) {
@@ -133,8 +135,13 @@ export default function ExportModal({
     }, 3000);
   }
 
-  async function handleExport() {
-    if (selectedCols.length === 0) return;
+  async function handleExport(e?: React.MouseEvent) {
+    e?.preventDefault();
+
+    const colsToExport = selectedCols.length > 0 ? selectedCols : ['id', 'dot_number', 'legal_name', 'phone', 'email', 'state'];
+    const currentScope = scope || 'all_matching';
+    const currentMode = exportMode || 'all_stream';
+
     setIsExporting(true);
     setErrorMessage(null);
     setProgressPercent(5);
@@ -150,7 +157,7 @@ export default function ExportModal({
 
     try {
       // ── MODE 1: All Matching Auto-Chunked Combined Stream ─────────────────────
-      if (scope === 'all_matching' && exportMode === 'all_stream') {
+      if (currentScope === 'all_matching' && currentMode === 'all_stream') {
         const totalTarget = targetAllCount;
         if (totalTarget === 0) {
           throw new Error('No matching records found to export with your current filters.');
@@ -177,7 +184,7 @@ export default function ExportModal({
               filters: filters || {},
               format: 'csv',
               scope: 'all_matching',
-              columns: selectedCols,
+              columns: colsToExport,
               limit: CHUNK_SIZE,
               batch_num: currentBatchNum,
             }),
@@ -260,7 +267,6 @@ export default function ExportModal({
         }).catch((e) => console.warn('History log warning:', e));
 
         setTimeout(() => {
-          setIsExporting(false);
           onClose();
         }, 1800);
         return;
@@ -271,12 +277,12 @@ export default function ExportModal({
       const params = {
         filters: filters || {},
         format,
-        scope,
+        scope: currentScope,
         selected_ids: selectedIds,
-        columns: selectedCols,
-        current_page_ids: scope === 'current_page' ? currentPageIds : [],
+        columns: colsToExport,
+        current_page_ids: currentScope === 'current_page' ? currentPageIds : [],
         limit: safeBatchSize,
-        batch_num: scope === 'all_matching' ? batchNum : 1,
+        batch_num: currentScope === 'all_matching' ? batchNum : 1,
       };
 
       const res = await fetch('/api/export', {
@@ -316,23 +322,24 @@ export default function ExportModal({
           file_name: fileName,
           format,
           record_count: exportRecordCount,
-          filter_summary: `${fmtNum(exportRecordCount)} records (${scope})`,
+          filter_summary: `${fmtNum(exportRecordCount)} records (${currentScope})`,
           filter_state: filters,
         }),
       }).catch(e => console.warn('History log warning:', e));
 
       setTimeout(() => {
-        setIsExporting(false);
-        if (scope === 'all_matching' && batchNum < totalBatches) {
+        if (currentScope === 'all_matching' && batchNum < totalBatches) {
           setBatchNum(b => b + 1);
+        } else if (currentScope === 'selected' || currentScope === 'current_page') {
+          onClose();
         }
       }, 1500);
 
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Export failed. Please try again.';
-      setErrorMessage(msg);
-      setIsExporting(false);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Export failed. Please try again.');
       setProgressPercent(0);
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -351,7 +358,7 @@ export default function ExportModal({
               <strong>{fmtNum(safeMatching)}</strong> carriers match your current filters
             </div>
           </div>
-          <button className="modal-close" onClick={() => { if (!isExporting) onClose(); }} disabled={isExporting}>✕</button>
+          <button type="button" className="modal-close" onClick={() => { if (!isExporting) onClose(); }} disabled={isExporting}>✕</button>
         </div>
 
         <div className="modal-body">
@@ -588,8 +595,8 @@ export default function ExportModal({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
               <label className="modal-label" style={{ marginBottom: 0 }}>3. Select Export Fields ({selectedCols.length})</label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button className="fp-link-btn" onClick={selectAllCols} disabled={isExporting}>Select All</button>
-                <button className="fp-link-btn" onClick={clearAllCols} disabled={isExporting}>Clear All</button>
+                <button type="button" className="fp-link-btn" onClick={selectAllCols} disabled={isExporting}>Select All</button>
+                <button type="button" className="fp-link-btn" onClick={clearAllCols} disabled={isExporting}>Clear All</button>
               </div>
             </div>
 
@@ -609,7 +616,7 @@ export default function ExportModal({
           </div>
 
           {/* Live Progress Bar & Status */}
-          {isExporting && (
+          {(isExporting || (progressPercent > 0 && !errorMessage)) && (
             <div style={{
               padding: '0.85rem 1.1rem',
               background: 'rgba(34, 211, 238, 0.08)',
@@ -621,7 +628,7 @@ export default function ExportModal({
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--cyan)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span className="spinner" style={{ width: '16px', height: '16px' }} />
+                  {isExporting && <span className="spinner" style={{ width: '16px', height: '16px' }} />}
                   {progressStatus || 'Starting export stream...'}
                 </div>
                 <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--cyan)' }}>{progressPercent}%</span>
@@ -644,6 +651,7 @@ export default function ExportModal({
         <div className="modal-footer">
           {isExporting ? (
             <button
+              type="button"
               className="btn-secondary"
               onClick={() => {
                 cancelRef.current = true;
@@ -655,15 +663,16 @@ export default function ExportModal({
               Cancel Export
             </button>
           ) : (
-            <button className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           )}
 
           <button
+            type="button"
             className="btn-primary-lg"
-            onClick={handleExport}
-            disabled={isExporting || selectedCols.length === 0 || isOverCap}
+            onClick={(e) => handleExport(e)}
+            disabled={isExporting}
             style={{
-              opacity: isOverCap ? 0.5 : 1,
+              opacity: isOverCap ? 0.6 : 1,
               cursor: isOverCap ? 'not-allowed' : 'pointer',
             }}
           >
@@ -671,7 +680,7 @@ export default function ExportModal({
               ? `⚠️ Exceeds 50k Limit (${fmtNum(safeMatching)} Matches)`
               : isExporting
               ? `⏳ Exporting (${progressPercent}%)...`
-              : scope === 'all_matching' && exportMode === 'all_stream'
+              : activeScope === 'all_matching' && activeMode === 'all_stream'
               ? `⚡ Export All ${fmtNum(targetAllCount)} Leads (Single CSV)`
               : `📥 Export ${fmtNum(exportRecordCount)} Carriers (${format.toUpperCase()})`}
           </button>
