@@ -636,43 +636,73 @@ export default function FilterDrawer({
             {expandedSections.advanced && (
               <div className="fp-sec-content">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-                  <label className="fp-label" style={{ marginBottom: 0 }}>Rules (Match ALL)</label>
+                  <label className="fp-label" style={{ marginBottom: 0 }}>Rules</label>
                   <button className="fp-link-btn" onClick={addRule}>+ Add Rule</button>
                 </div>
-                {(draft.advanced_rules || []).map(rule => (
-                  <div key={rule.id} className="fp-rule-row">
-                    <select
-                      className="fp-select-sm"
-                      value={rule.field}
-                      onChange={e => updateRule(rule.id, { field: e.target.value })}
-                    >
-                      <option value="legal_name">Legal Name</option>
-                      <option value="dba_name">DBA Name</option>
-                      <option value="usdot_number">USDOT</option>
-                      <option value="phone">Phone</option>
-                      <option value="email">Email</option>
-                      <option value="principal_address">Address</option>
-                      <option value="carrier_status">Status</option>
-                    </select>
-                    <select
-                      className="fp-select-sm"
-                      value={rule.operator}
-                      onChange={e => updateRule(rule.id, { operator: e.target.value })}
-                    >
-                      <option value="contains">Contains</option>
-                      <option value="exact">Exact</option>
-                      <option value="is_not_empty">Is Not Empty</option>
-                      <option value="is_empty">Is Empty</option>
-                    </select>
-                    {rule.operator !== 'is_not_empty' && rule.operator !== 'is_empty' && (
-                      <input
-                        className="fp-input-sm"
-                        placeholder="Value..."
-                        value={rule.value}
-                        onChange={e => updateRule(rule.id, { value: e.target.value })}
-                      />
+                {(draft.advanced_rules || []).map((rule, idx) => (
+                  <div key={rule.id}>
+                    {idx > 0 && (
+                      <div style={{ display: 'flex', gap: '0.3rem', margin: '0.35rem 0' }}>
+                        {(['AND', 'OR'] as const).map(l => (
+                          <button
+                            key={l}
+                            type="button"
+                            onClick={() => updateRule(rule.id, { logic: l })}
+                            style={{
+                              padding: '0.15rem 0.5rem',
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              borderRadius: '4px',
+                              border: (rule.logic || 'AND') === l ? '1px solid var(--cyan)' : '1px solid var(--border)',
+                              background: (rule.logic || 'AND') === l ? 'rgba(34,211,238,0.15)' : 'var(--bg)',
+                              color: (rule.logic || 'AND') === l ? 'var(--cyan)' : 'var(--muted2)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {l}
+                          </button>
+                        ))}
+                      </div>
                     )}
-                    <button className="fp-rule-del" onClick={() => removeRule(rule.id)}>✕</button>
+                    <div className="fp-rule-row">
+                      <select
+                        className="fp-select-sm"
+                        value={rule.field}
+                        onChange={e => updateRule(rule.id, { field: e.target.value })}
+                      >
+                        <option value="legal_name">Legal Name</option>
+                        <option value="dba_name">DBA Name</option>
+                        <option value="usdot_number">USDOT</option>
+                        <option value="usdot_number_num">USDOT Number (Numeric)</option>
+                        <option value="phone">Phone</option>
+                        <option value="email">Email</option>
+                        <option value="principal_address">Address</option>
+                        <option value="carrier_status">Status</option>
+                      </select>
+                      <select
+                        className="fp-select-sm"
+                        value={rule.operator}
+                        onChange={e => updateRule(rule.id, { operator: e.target.value })}
+                      >
+                        <option value="contains">Contains</option>
+                        <option value="exact">Exact</option>
+                        <option value="is_not_empty">Is Not Empty</option>
+                        <option value="is_empty">Is Empty</option>
+                        <option value="gt">Greater Than</option>
+                        <option value="gte">Greater Than or Equal</option>
+                        <option value="lt">Less Than</option>
+                        <option value="lte">Less Than or Equal</option>
+                      </select>
+                      {rule.operator !== 'is_not_empty' && rule.operator !== 'is_empty' && (
+                        <input
+                          className="fp-input-sm"
+                          placeholder="Value..."
+                          value={rule.value}
+                          onChange={e => updateRule(rule.id, { value: e.target.value })}
+                        />
+                      )}
+                      <button className="fp-rule-del" onClick={() => removeRule(rule.id)}>✕</button>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -1,4 +1,4 @@
-import { FilterState } from './types';
+import { FilterState, AdvancedRule } from './types';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export function defaultFilterState(): FilterState {
@@ -15,15 +15,56 @@ export function defaultFilterState(): FilterState {
   };
 }
 
+// Keyword -> real MOTUS equipmentTypeDesc substring mapping, used to match
+// against the actual `vehicles.vehicle_type` column (populated once the
+// carrier's registration-matrix data has been backfilled).
+function equipmentKeywordPatterns(t: string): string[] {
+  const lower = t.toLowerCase();
+  if (lower.includes('power only') || lower.includes('poweronly')) return ['Power Only', 'PowerOnly'];
+  if (lower.includes('box truck') || lower.includes('boxtruck')) return ['Box Truck', 'Boxtruck'];
+  if (lower.includes('cargo van') || lower.includes('sprinter')) return ['Cargo Van', 'Sprinter'];
+  if (lower.includes('hauler') || lower.includes('car hauler') || lower.includes('auto hauler')) return ['Hauler', 'Auto Haul'];
+  if (lower.includes('hotshot') || lower.includes('hot shot')) return ['Hotshot', 'Hot Shot'];
+  if (lower.includes('flatbed')) return ['Flatbed', 'Flat Bed'];
+  if (lower.includes('reefer') || lower.includes('refrigerated')) return ['Reefer', 'Refrigerat'];
+  if (lower.includes('tanker')) return ['Tanker'];
+  if (lower.includes('dump')) return ['Dump Truck', 'Dump'];
+  if (lower.includes('tractor')) return ['Tractor'];
+  if (lower.includes('trailer')) return ['Trailer'];
+  if (lower.includes('van')) return ['Van'];
+  if (lower.includes('specialized')) return ['Specialized', 'Heavy Haul'];
+  return [t.replace(/[^a-zA-Z0-9 ]/g, '')];
+}
+
 export function buildCarrierQuery(
   supabaseAdmin: SupabaseClient,
   filters: FilterState,
   selectFields = '*',
   includeCount = true
 ) {
+  // Equipment & Cargo Filters query the real `vehicles` / `cargo_classifications`
+  // tables via an embedded join, rather than guessing from the company name.
+  // Until those tables are backfilled with real MOTUS matrix data, this
+  // correctly returns zero matches instead of fabricated ones.
+  const activeEquipmentTypes = (filters.equipment_types || []).filter(
+    t => t !== 'No Equipment' && t !== 'Both' && t !== 'All' && t !== 'All / Non-Filter' && t !== 'non- filter'
+  );
+  const wantsNoEquipment =
+    filters.equipment_mode === 'no_equipment' || (filters.equipment_types || []).includes('No Equipment');
+  const wantsHasEquipment = filters.equipment_mode === 'has_equipment' && !wantsNoEquipment;
+  const wantsSpecificEquipment = !wantsNoEquipment && activeEquipmentTypes.length > 0;
+  const activeCargoTypes = filters.cargo_types || [];
+  const wantsCargo = activeCargoTypes.length > 0;
+
+  let selectClause = selectFields;
+  if (wantsNoEquipment) selectClause += ',vehicles!left(id)';
+  else if (wantsSpecificEquipment) selectClause += ',vehicles!inner(vehicle_type)';
+  else if (wantsHasEquipment) selectClause += ',vehicles!inner(id)';
+  if (wantsCargo) selectClause += ',cargo_classifications!inner(classification)';
+
   let q = includeCount
-    ? supabaseAdmin.from('carriers').select(selectFields, { count: 'exact' })
-    : supabaseAdmin.from('carriers').select(selectFields);
+    ? supabaseAdmin.from('carriers').select(selectClause, { count: 'exact' })
+    : supabaseAdmin.from('carriers').select(selectClause);
 
   // Global Search
   if (filters.global_search?.trim()) {
@@ -137,7 +178,10 @@ export function buildCarrierQuery(
 
   if (filters.city?.trim()) {
     const c = filters.city.trim();
-    if (filters.city_match === 'exact') q = q.ilike('principal_address', `% ${c} %`);
+    // Addresses are formatted "STREET, CITY, STATE, ZIP" — the city is always
+    // comma-delimited, never surrounded by bare spaces, so an exact match
+    // must anchor on the commas rather than spaces.
+    if (filters.city_match === 'exact') q = q.ilike('principal_address', `%, ${c},%`);
     else q = q.ilike('principal_address', `%${c}%`);
   }
 
@@ -150,69 +194,26 @@ export function buildCarrierQuery(
     q = q.in('form_of_business', filters.form_of_business);
   }
 
-  // Equipment & Fleet Filters
-  const hasNoEquipment =
-    filters.equipment_mode === 'no_equipment' ||
-    (filters.equipment_types || []).includes('No Equipment');
-  const isBothOrAll =
-    filters.equipment_mode === 'both' ||
-    filters.equipment_mode === 'all' ||
-    (filters.equipment_types || []).includes('All') ||
-    (filters.equipment_types || []).includes('All / Non-Filter') ||
-    (filters.equipment_types || []).includes('non- filter') ||
-    (!filters.equipment_mode && (!filters.equipment_types || filters.equipment_types.length === 0));
-
-  if (!isBothOrAll) {
-    if (hasNoEquipment) {
-      q = q.or('form_of_business.ilike.%Broker%,legal_name.ilike.%Broker%,legal_name.ilike.%Logistics%,carrier_status.eq.Inactive,out_of_service.eq.true');
-    } else if (filters.equipment_mode === 'has_equipment') {
-      q = q.eq('carrier_status', 'Active').eq('out_of_service', false);
+  // Equipment & Fleet Filters — filter on the real embedded `vehicles` relation.
+  if (wantsNoEquipment) {
+    // Left-joined with no matching vehicle row = carrier has none on file.
+    q = q.is('vehicles.id', null);
+  } else if (wantsSpecificEquipment) {
+    const clauses: string[] = [];
+    activeEquipmentTypes.forEach(t => {
+      equipmentKeywordPatterns(t).forEach(p => clauses.push(`vehicle_type.ilike.%${p}%`));
+    });
+    if (clauses.length > 0) {
+      q = q.or(clauses.join(','), { foreignTable: 'vehicles' });
     }
   }
+  // wantsHasEquipment needs no extra filter — the `vehicles!inner(id)` embed
+  // above already requires at least one matching vehicle row to exist.
 
-  if (filters.equipment_types && filters.equipment_types.length > 0) {
-    const validTypes = filters.equipment_types.filter(
-      t => t !== 'No Equipment' && t !== 'Both' && t !== 'All' && t !== 'All / Non-Filter' && t !== 'non- filter'
-    );
-    if (validTypes.length > 0) {
-      const clauses: string[] = [];
-      validTypes.forEach(t => {
-        const lower = t.toLowerCase();
-        if (lower.includes('power only') || lower.includes('poweronly')) {
-          clauses.push('legal_name.ilike.%Power Only%', 'dba_name.ilike.%Power Only%', 'legal_name.ilike.%PowerOnly%', 'dba_name.ilike.%PowerOnly%');
-        } else if (lower.includes('box truck') || lower.includes('boxtruck')) {
-          clauses.push('legal_name.ilike.%Box Truck%', 'dba_name.ilike.%Box Truck%', 'legal_name.ilike.%Boxtruck%', 'dba_name.ilike.%Boxtruck%');
-        } else if (lower.includes('cargo van') || lower.includes('sprinter')) {
-          clauses.push('legal_name.ilike.%Cargo Van%', 'dba_name.ilike.%Cargo Van%', 'legal_name.ilike.%Sprinter%', 'dba_name.ilike.%Sprinter%');
-        } else if (lower.includes('hauler') || lower.includes('car hauler') || lower.includes('auto hauler')) {
-          clauses.push('legal_name.ilike.%Hauler%', 'dba_name.ilike.%Hauler%', 'legal_name.ilike.%Auto Haul%', 'dba_name.ilike.%Auto Haul%');
-        } else if (lower.includes('hotshot') || lower.includes('hot shot')) {
-          clauses.push('legal_name.ilike.%Hotshot%', 'dba_name.ilike.%Hotshot%', 'legal_name.ilike.%Hot Shot%', 'dba_name.ilike.%Hot Shot%');
-        } else if (lower.includes('flatbed')) {
-          clauses.push('legal_name.ilike.%Flatbed%', 'dba_name.ilike.%Flatbed%', 'legal_name.ilike.%Flat Bed%');
-        } else if (lower.includes('reefer') || lower.includes('refrigerated')) {
-          clauses.push('legal_name.ilike.%Reefer%', 'dba_name.ilike.%Reefer%', 'legal_name.ilike.%Refrigerat%');
-        } else if (lower.includes('tanker')) {
-          clauses.push('legal_name.ilike.%Tanker%', 'dba_name.ilike.%Tanker%');
-        } else if (lower.includes('dump')) {
-          clauses.push('legal_name.ilike.%Dump Truck%', 'dba_name.ilike.%Dump%');
-        } else if (lower.includes('tractor')) {
-          clauses.push('legal_name.ilike.%Tractor%', 'dba_name.ilike.%Tractor%');
-        } else if (lower.includes('trailer')) {
-          clauses.push('legal_name.ilike.%Trailer%', 'dba_name.ilike.%Trailer%');
-        } else if (lower.includes('van')) {
-          clauses.push('legal_name.ilike.%Van%', 'dba_name.ilike.%Van%');
-        } else if (lower.includes('specialized')) {
-          clauses.push('legal_name.ilike.%Specialized%', 'dba_name.ilike.%Heavy Haul%');
-        } else {
-          const clean = t.replace(/[^a-zA-Z0-9]/g, '');
-          clauses.push(`legal_name.ilike.%${clean}%`, `dba_name.ilike.%${clean}%`);
-        }
-      });
-      if (clauses.length > 0) {
-        q = q.or(clauses.join(','));
-      }
-    }
+  // Cargo Type Filters — filter on the real embedded `cargo_classifications` relation.
+  if (wantsCargo) {
+    const clauses = activeCargoTypes.map(c => `classification.ilike.%${c}%`);
+    q = q.or(clauses.join(','), { foreignTable: 'cargo_classifications' });
   }
 
   // Date Filters
@@ -277,22 +278,54 @@ export function buildCarrierQuery(
     }
   }
 
-  // Advanced Rules
-  if (filters.advanced_rules && filters.advanced_rules.length > 0) {
-    for (const rule of filters.advanced_rules) {
-      if (!rule.field || !rule.operator) continue;
-      const f = rule.field;
-      const op = rule.operator;
-      const val = rule.value;
+  // Advanced Rules — consecutive rules linked by `logic: 'OR'` are combined
+  // into a single OR group; groups themselves are ANDed together (standard
+  // AND-of-ORs semantics), so e.g. [A, B(OR), C] means (A OR B) AND C.
+  const activeRules = (filters.advanced_rules || []).filter(r => r.field && r.operator);
+  if (activeRules.length > 0) {
+    const groups: AdvancedRule[][] = [];
+    for (const rule of activeRules) {
+      if (rule.logic === 'OR' && groups.length > 0) {
+        groups[groups.length - 1].push(rule);
+      } else {
+        groups.push([rule]);
+      }
+    }
 
-      if (op === 'contains') q = q.ilike(f, `%${val}%`);
-      else if (op === 'exact') q = q.eq(f, val);
-      else if (op === 'is_not_empty') q = q.neq(f, '').not(f, 'is', null);
-      else if (op === 'is_empty') q = q.or(`${f}.eq.,${f}.is.null`);
-      else if (op === 'gt') q = q.gt(f, Number(val));
-      else if (op === 'gte') q = q.gte(f, Number(val));
-      else if (op === 'lt') q = q.lt(f, Number(val));
-      else if (op === 'lte') q = q.lte(f, Number(val));
+    // Flattened clause(s) for one rule, suitable for joining inside an OR group.
+    const ruleToClauses = (rule: AdvancedRule): string[] => {
+      const f = rule.field;
+      const val = rule.value;
+      switch (rule.operator) {
+        case 'contains': return [`${f}.ilike.%${val}%`];
+        case 'exact': return [`${f}.eq.${val}`];
+        case 'is_not_empty': return [`and(${f}.neq.,${f}.not.is.null)`];
+        case 'is_empty': return [`${f}.eq.`, `${f}.is.null`];
+        case 'gt': return [`${f}.gt.${Number(val)}`];
+        case 'gte': return [`${f}.gte.${Number(val)}`];
+        case 'lt': return [`${f}.lt.${Number(val)}`];
+        case 'lte': return [`${f}.lte.${Number(val)}`];
+        default: return [];
+      }
+    };
+
+    for (const group of groups) {
+      if (group.length === 1) {
+        const rule = group[0];
+        const f = rule.field;
+        const val = rule.value;
+        if (rule.operator === 'contains') q = q.ilike(f, `%${val}%`);
+        else if (rule.operator === 'exact') q = q.eq(f, val);
+        else if (rule.operator === 'is_not_empty') q = q.neq(f, '').not(f, 'is', null);
+        else if (rule.operator === 'is_empty') q = q.or(`${f}.eq.,${f}.is.null`);
+        else if (rule.operator === 'gt') q = q.gt(f, Number(val));
+        else if (rule.operator === 'gte') q = q.gte(f, Number(val));
+        else if (rule.operator === 'lt') q = q.lt(f, Number(val));
+        else if (rule.operator === 'lte') q = q.lte(f, Number(val));
+      } else {
+        const clauses = group.flatMap(ruleToClauses);
+        if (clauses.length > 0) q = q.or(clauses.join(','));
+      }
     }
   }
 
