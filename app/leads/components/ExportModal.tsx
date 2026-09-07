@@ -98,25 +98,26 @@ export default function ExportModal({
       setIsExporting(false);
       setProgressPercent(0);
       cancelRef.current = false;
+      setSelectedCols(prev => (prev && prev.length > 0 ? prev : ALL_COLUMNS.map(c => c.id)));
     }
   }, [isOpen, safeSelected]);
 
   if (!isOpen) return null;
 
   function toggleColumn(colId: string) {
-    if (selectedCols.includes(colId)) {
-      setSelectedCols(selectedCols.filter(c => c !== colId));
-    } else {
-      setSelectedCols([...selectedCols, colId]);
-    }
+    setSelectedCols(prev =>
+      prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId]
+    );
+    setErrorMessage(null);
   }
 
   function selectAllCols() {
     setSelectedCols(ALL_COLUMNS.map(c => c.id));
+    setErrorMessage(null);
   }
 
   function clearAllCols() {
-    setSelectedCols(['usdot_number', 'legal_name']);
+    setSelectedCols([]);
   }
 
   function triggerBlobDownload(blob: Blob, filename: string) {
@@ -138,7 +139,12 @@ export default function ExportModal({
   async function handleExport(e?: React.MouseEvent) {
     e?.preventDefault();
 
-    const colsToExport = selectedCols.length > 0 ? selectedCols : ['id', 'dot_number', 'legal_name', 'phone', 'email', 'state'];
+    if (!selectedCols || selectedCols.length === 0) {
+      setErrorMessage('Please select at least one column to export.');
+      return;
+    }
+
+    const colsToExport = selectedCols;
     const currentScope = scope || 'all_matching';
     const currentMode = exportMode || 'all_stream';
 

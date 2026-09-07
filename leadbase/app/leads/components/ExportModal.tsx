@@ -62,25 +62,26 @@ export default function ExportModal({
       }
       setErrorMessage(null);
       setExportProgress('idle');
+      setSelectedCols(prev => (prev && prev.length > 0 ? prev : ALL_COLUMNS.map(c => c.id)));
     }
   }, [isOpen, selectedCount]);
 
   if (!isOpen) return null;
 
   function toggleColumn(colId: string) {
-    if (selectedCols.includes(colId)) {
-      setSelectedCols(selectedCols.filter(c => c !== colId));
-    } else {
-      setSelectedCols([...selectedCols, colId]);
-    }
+    setSelectedCols(prev =>
+      prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId]
+    );
+    setErrorMessage(null);
   }
 
   function selectAllCols() {
     setSelectedCols(ALL_COLUMNS.map(c => c.id));
+    setErrorMessage(null);
   }
 
   function clearAllCols() {
-    setSelectedCols(['usdot_number', 'legal_name']);
+    setSelectedCols([]);
   }
 
   const exportRecordCount =
@@ -88,7 +89,10 @@ export default function ExportModal({
     scope === 'selected' ? selectedCount : currentPageCount;
 
   async function handleExport() {
-    if (selectedCols.length === 0) return;
+    if (!selectedCols || selectedCols.length === 0) {
+      setErrorMessage('Please select at least one column to export.');
+      return;
+    }
     setIsExporting(true);
     setExportProgress('fetching');
     setErrorMessage(null);
