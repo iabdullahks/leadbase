@@ -45,6 +45,7 @@ export default function LeadsPage() {
   // Main data state
   const [leads, setLeads] = useState<Carrier[]>([]);
   const [total, setTotal] = useState(0);
+  const [dbTotalCount, setDbTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -106,6 +107,14 @@ export default function LeadsPage() {
 
   useEffect(() => {
     fetchLeads(1);
+    fetch('/api/stats')
+      .then(r => r.json())
+      .then(d => {
+        if (typeof d.total === 'number' && d.total > 0) {
+          setDbTotalCount(d.total);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   function handleFilterApply(newFilters: FilterState) {
@@ -312,7 +321,7 @@ export default function LeadsPage() {
         onRemoveFilter={handleRemoveSingleFilter}
         onClearAll={handleFilterReset}
         matchingCount={total}
-        totalCount={total}
+        totalCount={dbTotalCount || total}
       />
 
       {/* Bulk Selection Banner */}
@@ -492,7 +501,7 @@ export default function LeadsPage() {
         filters={filters}
         onApply={handleFilterApply}
         onReset={handleFilterReset}
-        totalCount={total}
+        totalCount={dbTotalCount || total}
       />
 
       <SavedViewsModal

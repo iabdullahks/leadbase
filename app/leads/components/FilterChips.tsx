@@ -95,7 +95,14 @@ export default function FilterChips({
     });
 
   if (filters.date_preset && filters.date_preset !== 'all') {
-    const fieldPrefix = filters.date_field === 'motus_entry_date' ? 'MOTUS Reg' : 'Added';
+    const fieldPrefix =
+      filters.date_field === 'motus_create_or_update'
+        ? 'MOTUS Reg/Update'
+        : filters.date_field === 'motus_entry_date'
+        ? 'MOTUS Reg'
+        : filters.date_field === 'motus_last_updated'
+        ? 'MOTUS Updated'
+        : 'Added';
     const presetLabels: Record<string, string> = {
       today: `${fieldPrefix}: Today`,
       yesterday: `${fieldPrefix}: Yesterday`,

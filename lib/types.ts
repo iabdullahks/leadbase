@@ -116,7 +116,7 @@ export interface FilterState {
   equipment_mode?: 'all' | 'has_equipment' | 'no_equipment' | 'both';
 
   // Date Filters
-  date_field?: 'scraped_at' | 'motus_entry_date' | 'added_to_motus' | 'motus_last_updated';
+  date_field?: 'scraped_at' | 'motus_entry_date' | 'added_to_motus' | 'motus_last_updated' | 'motus_create_or_update';
   date_preset?: 'all' | 'today' | 'yesterday' | 'last_7d' | 'last_30d' | 'last_90d' | 'this_month' | 'last_month' | 'custom';
   date_from?: string;
   date_to?: string;

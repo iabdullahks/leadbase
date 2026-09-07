@@ -570,7 +570,9 @@ export default function FilterDrawer({
                       onChange={e => setDraft({ ...draft, date_field: e.target.value as FilterState['date_field'] })}
                     >
                       <option value="scraped_at">Date Added to LeadBase (Scraped Date)</option>
+                      <option value="motus_create_or_update">MOTUS Created or Updated (FMCSA)</option>
                       <option value="motus_entry_date">MOTUS Entry Date (FMCSA Registration)</option>
+                      <option value="motus_last_updated">MOTUS Last Updated Date</option>
                     </select>
                   </div>
                   <div>

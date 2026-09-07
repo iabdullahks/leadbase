@@ -89,10 +89,15 @@ export default function ExportModal({
     scope === 'selected' ? selectedCount : currentPageCount;
 
   async function handleExport() {
-    if (!selectedCols || selectedCols.length === 0) {
-      setErrorMessage('Please select at least one column to export.');
-      return;
+    // Fall back to all columns instead of silently no-op'ing the export
+    // when selection state is empty (e.g. user hit "Clear All").
+    const colsToExport = selectedCols && selectedCols.length > 0
+      ? selectedCols
+      : ALL_COLUMNS.map(c => c.id);
+    if (colsToExport !== selectedCols) {
+      setSelectedCols(colsToExport);
     }
+
     setIsExporting(true);
     setExportProgress('fetching');
     setErrorMessage(null);
@@ -102,7 +107,7 @@ export default function ExportModal({
         format,
         scope,
         selected_ids: selectedIds,
-        columns: selectedCols,
+        columns: colsToExport,
       };
 
       const res = await fetch('/api/export', {
@@ -343,7 +348,7 @@ export default function ExportModal({
           <button
             className="btn-primary-lg"
             onClick={handleExport}
-            disabled={isExporting || selectedCols.length === 0}
+            disabled={isExporting}
           >
             {exportProgress === 'success' ? '✓ Download Started!' : isExporting ? '⏳ Exporting…' : `Export ${exportRecordCount.toLocaleString()} Carriers`}
           </button>

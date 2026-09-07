@@ -8,7 +8,7 @@ export function defaultFilterState(): FilterState {
     states: [],
     cargo_types: [],
     equipment_types: [],
-    date_field: 'scraped_at',
+    date_field: 'motus_create_or_update',
     date_preset: 'all',
     missing_fields: [],
     advanced_rules: [],
@@ -43,16 +43,13 @@ export function buildCarrierQuery(
     } else if (filters.id_match_type === 'contains') {
       q = q.ilike('usdot_number', `%${v}%`);
     } else {
-      // Default & 'starts_from': Numbers numerically >= v onwards to the end of the database!
-      // Uses exact digit-length boundary matching so shorter numbers like 96466 NEVER leak in!
+      // Default & 'starts_from': Numbers numerically >= v onwards to the end of the database.
+      // usdot_number is stored as TEXT, so a plain .gte() compares lexicographically
+      // (e.g. "96466" > "4582560" as strings) and leaks in shorter/unrelated numbers.
+      // usdot_number_num is a real indexed bigint column kept in sync via trigger —
+      // filtering on it gives a true numeric comparison that can use the index.
       if (/^\d+$/.test(v)) {
-        const L = v.length;
-        const underL = '_'.repeat(L);
-        const clauses = [`and(usdot_number.like.${underL},usdot_number.gte.${v})`];
-        for (let len = L + 1; len <= 10; len++) {
-          clauses.push(`usdot_number.like.${'_'.repeat(len)}`);
-        }
-        q = q.or(clauses.join(','));
+        q = q.gte('usdot_number_num', Number(v));
       } else {
         q = q.ilike('usdot_number', `${v}%`);
       }
@@ -61,7 +58,7 @@ export function buildCarrierQuery(
 
   const rawDotTo = (filters.usdot_to || anyF.dotTo || '').toString().trim();
   if (rawDotTo && /^\d+$/.test(rawDotTo)) {
-    q = q.lte('usdot_number', rawDotTo);
+    q = q.lte('usdot_number_num', Number(rawDotTo));
   }
 
   if (filters.company_name?.trim()) {
@@ -229,6 +226,9 @@ export function buildCarrierQuery(
   const dateCol = filters.date_field || 'scraped_at';
   const now = new Date();
 
+  let fromIso: string | null = null;
+  let toIso: string | null = null;
+
   if (filters.date_preset && filters.date_preset !== 'all' && filters.date_preset !== 'custom') {
     let fromDate: Date | null = null;
     let toDate: Date | null = null;
@@ -251,17 +251,28 @@ export function buildCarrierQuery(
       toDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0, 23, 59, 59, 999));
     }
 
-    if (fromDate) q = q.gte(dateCol, fromDate.toISOString());
-    if (toDate) q = q.lte(dateCol, toDate.toISOString());
+    if (fromDate) fromIso = fromDate.toISOString();
+    if (toDate) toIso = toDate.toISOString();
   } else if (filters.date_preset === 'custom' || ((filters.date_from || filters.date_to) && filters.date_preset !== 'all')) {
     if (filters.date_from?.trim()) {
-      const fromStr = filters.date_from.includes('T') ? filters.date_from : `${filters.date_from.trim()}T00:00:00.000Z`;
-      q = q.gte(dateCol, fromStr);
+      fromIso = filters.date_from.includes('T') ? filters.date_from : `${filters.date_from.trim()}T00:00:00.000Z`;
     }
     if (filters.date_to?.trim()) {
-      const toStr = filters.date_to.includes('T') ? filters.date_to : `${filters.date_to.trim()}T23:59:59.999Z`;
-      q = q.lte(dateCol, toStr);
+      toIso = filters.date_to.includes('T') ? filters.date_to : `${filters.date_to.trim()}T23:59:59.999Z`;
     }
+  }
+
+  if (filters.date_field === 'motus_create_or_update') {
+    if (fromIso && toIso) {
+      q = q.or(`and(motus_entry_date.gte.${fromIso},motus_entry_date.lte.${toIso}),and(motus_last_updated.gte.${fromIso},motus_last_updated.lte.${toIso})`);
+    } else if (fromIso) {
+      q = q.or(`motus_entry_date.gte.${fromIso},motus_last_updated.gte.${fromIso}`);
+    } else if (toIso) {
+      q = q.or(`motus_entry_date.lte.${toIso},motus_last_updated.lte.${toIso}`);
+    }
+  } else {
+    if (fromIso) q = q.gte(dateCol, fromIso);
+    if (toIso) q = q.lte(dateCol, toIso);
   }
 
   // Data Quality Filters

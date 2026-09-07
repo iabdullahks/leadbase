@@ -139,12 +139,15 @@ export default function ExportModal({
   async function handleExport(e?: React.MouseEvent) {
     e?.preventDefault();
 
-    if (!selectedCols || selectedCols.length === 0) {
-      setErrorMessage('Please select at least one column to export.');
-      return;
+    // Fall back to all columns instead of silently no-op'ing the export
+    // when selection state is empty (e.g. user hit "Clear All").
+    const colsToExport = selectedCols && selectedCols.length > 0
+      ? selectedCols
+      : ALL_COLUMNS.map(c => c.id);
+    if (colsToExport !== selectedCols) {
+      setSelectedCols(colsToExport);
     }
 
-    const colsToExport = selectedCols;
     const currentScope = scope || 'all_matching';
     const currentMode = exportMode || 'all_stream';
 
