@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { buildCarrierQuery, defaultFilterState } from '@/lib/queryBuilder';
+import { buildCarrierQuery, defaultFilterState, resolveEquipmentCargoIds } from '@/lib/queryBuilder';
 import { FilterState } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    let q = buildCarrierQuery(supabaseAdmin, filters);
+    const equipmentCargoIds = await resolveEquipmentCargoIds(supabaseAdmin, filters);
+    let q = buildCarrierQuery(supabaseAdmin, filters, '*', true, equipmentCargoIds);
     q = q.order(sort, { ascending: dir }).range(offset, offset + limit - 1);
 
     const { data, count, error } = await q;
@@ -63,7 +64,8 @@ export async function GET(req: NextRequest) {
     };
 
     const offset = (page - 1) * limit;
-    let q = buildCarrierQuery(supabaseAdmin, filters);
+    const equipmentCargoIds = await resolveEquipmentCargoIds(supabaseAdmin, filters);
+    let q = buildCarrierQuery(supabaseAdmin, filters, '*', true, equipmentCargoIds);
     q = q.order(sort, { ascending: dir }).range(offset, offset + limit - 1);
 
     const { data, count, error } = await q;

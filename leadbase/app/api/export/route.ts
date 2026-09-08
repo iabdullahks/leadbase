@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { buildCarrierQuery, defaultFilterState } from '@/lib/queryBuilder';
+import { buildCarrierQuery, defaultFilterState, resolveEquipmentCargoIds } from '@/lib/queryBuilder';
 import { Carrier, FilterState } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -93,7 +93,8 @@ export async function POST(req: NextRequest) {
         allData = (data as unknown as Record<string, unknown>[]) || [];
       } else {
         // Fallback: fetch first page with filters applied (50 rows)
-        let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
+        const equipmentCargoIds = await resolveEquipmentCargoIds(supabaseAdmin, filters);
+        let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false, equipmentCargoIds);
         q = q.order('id', { ascending: false }).range(0, 49);
         const { data, error } = await q;
         if (error) throw error;
@@ -107,6 +108,7 @@ export async function POST(req: NextRequest) {
       const totalBatches = Math.ceil(maxRecords / batchSize);
       // Run up to 4 batches concurrently for 4x faster export speed
       const concurrency = 4;
+      const equipmentCargoIds = await resolveEquipmentCargoIds(supabaseAdmin, filters);
 
       for (let i = 0; i < totalBatches; i += concurrency) {
         const batchIndexes: number[] = [];
@@ -114,10 +116,10 @@ export async function POST(req: NextRequest) {
           batchIndexes.push(j);
         }
 
-        const chunkPromises = batchIndexes.map(idx => {
+        const chunkPromises = batchIndexes.map(async idx => {
           const from = idx * batchSize;
           const to = Math.min((idx + 1) * batchSize - 1, maxRecords - 1);
-          let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
+          const q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false, equipmentCargoIds);
           return q.order('id', { ascending: false }).range(from, to);
         });
 
@@ -191,7 +193,8 @@ export async function GET(req: NextRequest) {
       has_email: hasEmail ? true : null,
     };
 
-    let q = buildCarrierQuery(supabaseAdmin, filters);
+    const equipmentCargoIds = await resolveEquipmentCargoIds(supabaseAdmin, filters);
+    let q = buildCarrierQuery(supabaseAdmin, filters, '*', true, equipmentCargoIds);
     q = q.order('scraped_at', { ascending: false }).limit(1000);
 
     const { data, error } = await q;

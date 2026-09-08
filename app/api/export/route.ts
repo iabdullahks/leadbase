@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { buildCarrierQuery, defaultFilterState } from '@/lib/queryBuilder';
+import { buildCarrierQuery, defaultFilterState, resolveEquipmentCargoIds } from '@/lib/queryBuilder';
 import { FilterState } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -105,7 +105,8 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
       if (error) throw error;
       allData = (data as unknown as Record<string, unknown>[]) || [];
     } else {
-      let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
+      const equipmentCargoIds = await resolveEquipmentCargoIds(supabaseAdmin, filters);
+      let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false, equipmentCargoIds);
       q = q.order('id', { ascending: false }).range(0, 49);
       const { data, error } = await q;
       if (error) throw error;
@@ -120,14 +121,16 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
     const CHUNK_SIZE = 1000;
     const totalChunks = Math.ceil(requestedLimit / CHUNK_SIZE);
 
+    const equipmentCargoIds = await resolveEquipmentCargoIds(supabaseAdmin, filters);
     const chunkPromises = [];
     for (let c = 0; c < totalChunks; c++) {
       const chunkFrom = baseOffset + c * CHUNK_SIZE;
       const thisChunkSize = Math.min(CHUNK_SIZE, requestedLimit - c * CHUNK_SIZE);
       const chunkTo = chunkFrom + thisChunkSize - 1;
 
-      let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false);
-      chunkPromises.push(q.order('id', { ascending: true }).range(chunkFrom, chunkTo));
+      const q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false, equipmentCargoIds)
+        .order('id', { ascending: true }).range(chunkFrom, chunkTo);
+      chunkPromises.push(q);
     }
 
     const chunkResults = await Promise.all(chunkPromises);

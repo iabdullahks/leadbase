@@ -36,16 +36,40 @@ function equipmentKeywordPatterns(t: string): string[] {
   return [t.replace(/[^a-zA-Z0-9 ]/g, '')];
 }
 
-export function buildCarrierQuery(
-  supabaseAdmin: SupabaseClient,
-  filters: FilterState,
-  selectFields = '*',
-  includeCount = true
-) {
-  // Equipment & Cargo Filters query the real `vehicles` / `cargo_classifications`
-  // tables via an embedded join, rather than guessing from the company name.
-  // Until those tables are backfilled with real MOTUS matrix data, this
-  // correctly returns zero matches instead of fabricated ones.
+// Keyword -> real MOTUS classification substring mapping, used to match
+// against the actual `cargo_classifications.classification` column. This
+// column stores MOTUS's full sentence-length category descriptions (not the
+// short UI labels), so a naive `ilike '%<label>%'` breaks in two ways:
+// (1) several UI labels never appear verbatim in the real text at all (e.g.
+// "Driveaway/Towaway" vs the real "Driveaway-towaway"), so they'd always
+// return zero results; (2) generic UI labels like "Other" or "Liquids/Gases"
+// are substrings of unrelated long descriptions (e.g. "...and Other General
+// Purpose Machinery", or the General Freight description's parenthetical
+// mention of "liquids/gases"), so they'd match the wrong carriers. `exact:
+// true` entries use a plain (non-wildcarded) ilike, i.e. case-insensitive
+// equality, to avoid that overmatching.
+function cargoKeywordPatterns(t: string): { pattern: string; exact?: boolean }[] {
+  const lower = t.toLowerCase();
+  if (lower === 'other') return [{ pattern: 'Other', exact: true }, { pattern: 'OTHER', exact: true }];
+  if (lower.includes('general freight')) return [{ pattern: 'General Freight' }];
+  if (lower.includes('household goods')) return [{ pattern: 'Household Goods' }];
+  if (lower.includes('motor vehicles')) return [{ pattern: 'Motor Vehicles' }];
+  if (lower.includes('driveaway') || lower.includes('towaway')) return [{ pattern: 'towaway' }];
+  if (lower.includes('machinery')) return [{ pattern: 'Machinery' }];
+  if (lower.includes('fresh produce')) return [{ pattern: 'Fresh Produce' }];
+  if (lower.includes('liquid') || lower.includes('gas')) return [{ pattern: 'liquids and gases' }];
+  if (lower.includes('chemical')) return [{ pattern: 'Chemicals' }];
+  if (lower.includes('agricultural') || lower.includes('farm supplies')) return [{ pattern: 'Agriculture Operations' }];
+  if (lower.includes('construction')) return [{ pattern: 'Construction' }];
+  if (lower.includes('grain') || lower.includes('feed') || lower.includes('ore')) {
+    return [{ pattern: 'Oilseed and Grain' }, { pattern: 'Metal Ore Mining' }];
+  }
+  return [{ pattern: t }];
+}
+
+// Pure, synchronous read of what the equipment/cargo filters are asking for —
+// no DB calls. Shared by resolveEquipmentCargoIds() and buildCarrierQuery().
+function getEquipmentCargoIntent(filters: FilterState) {
   const activeEquipmentTypes = (filters.equipment_types || []).filter(
     t => t !== 'No Equipment' && t !== 'Both' && t !== 'All' && t !== 'All / Non-Filter' && t !== 'non- filter'
   );
@@ -55,16 +79,82 @@ export function buildCarrierQuery(
   const wantsSpecificEquipment = !wantsNoEquipment && activeEquipmentTypes.length > 0;
   const activeCargoTypes = filters.cargo_types || [];
   const wantsCargo = activeCargoTypes.length > 0;
+  return { activeEquipmentTypes, wantsNoEquipment, wantsHasEquipment, wantsSpecificEquipment, activeCargoTypes, wantsCargo };
+}
+
+// Resolves candidate carrier IDs for equipment_types/cargo_types/has_equipment
+// filters via a cheap lookup against the small `vehicles`/`cargo_classifications`
+// tables, instead of joining against the full 4.1M-row `carriers` table (which
+// timed out — Postgres has to evaluate the join condition per carrier row even
+// when the joined table is empty). Callers MUST await this before calling the
+// (synchronous) buildCarrierQuery and pass the result through, since
+// PostgrestFilterBuilder is itself "thenable" — an async function that
+// `return`s one gets its result auto-unwrapped by JS at runtime, which would
+// silently break every caller's .order()/.range() chaining.
+// Returns null if no equipment/cargo filter is active (no restriction needed).
+export async function resolveEquipmentCargoIds(
+  supabaseAdmin: SupabaseClient,
+  filters: FilterState
+): Promise<number[] | null> {
+  const { activeEquipmentTypes, wantsHasEquipment, wantsSpecificEquipment, activeCargoTypes, wantsCargo } =
+    getEquipmentCargoIntent(filters);
+  if (!wantsSpecificEquipment && !wantsHasEquipment && !wantsCargo) return null;
+
+  let ids: number[] | null = null;
+  const intersect = (a: number[] | null, b: number[]): number[] => (a === null ? b : a.filter(id => b.includes(id)));
+
+  if (wantsSpecificEquipment || wantsHasEquipment) {
+    let vQuery = supabaseAdmin.from('vehicles').select('carrier_id');
+    if (wantsSpecificEquipment) {
+      const clauses: string[] = [];
+      activeEquipmentTypes.forEach(t => {
+        equipmentKeywordPatterns(t).forEach(p => clauses.push(`vehicle_type.ilike.%${p}%`));
+      });
+      if (clauses.length > 0) vQuery = vQuery.or(clauses.join(','));
+    }
+    const { data, error } = await vQuery;
+    if (error) console.error('Error pre-filtering vehicles:', error);
+    ids = intersect(ids, Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id))));
+  }
+
+  if (wantsCargo) {
+    let cQuery = supabaseAdmin.from('cargo_classifications').select('carrier_id');
+    const clauses: string[] = [];
+    activeCargoTypes.forEach(c => {
+      cargoKeywordPatterns(c).forEach(({ pattern, exact }) => {
+        clauses.push(exact ? `classification.ilike.${pattern}` : `classification.ilike.%${pattern}%`);
+      });
+    });
+    if (clauses.length > 0) cQuery = cQuery.or(clauses.join(','));
+    const { data, error } = await cQuery;
+    if (error) console.error('Error pre-filtering cargo:', error);
+    ids = intersect(ids, Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id))));
+  }
+
+  return ids ?? [];
+}
+
+export function buildCarrierQuery(
+  supabaseAdmin: SupabaseClient,
+  filters: FilterState,
+  selectFields = '*',
+  includeCount = true,
+  // Precomputed via resolveEquipmentCargoIds(): undefined/null = no equipment/
+  // cargo filter active, [] = filter active but matched nothing (exclude all).
+  equipmentCargoIds?: number[] | null
+) {
+  const { wantsNoEquipment } = getEquipmentCargoIntent(filters);
 
   let selectClause = selectFields;
   if (wantsNoEquipment) selectClause += ',vehicles!left(id)';
-  else if (wantsSpecificEquipment) selectClause += ',vehicles!inner(vehicle_type)';
-  else if (wantsHasEquipment) selectClause += ',vehicles!inner(id)';
-  if (wantsCargo) selectClause += ',cargo_classifications!inner(classification)';
 
   let q = includeCount
     ? supabaseAdmin.from('carriers').select(selectClause, { count: 'exact' })
     : supabaseAdmin.from('carriers').select(selectClause);
+
+  if (equipmentCargoIds != null) {
+    q = equipmentCargoIds.length === 0 ? q.eq('id', -1) : q.in('id', equipmentCargoIds);
+  }
 
   // Global Search
   if (filters.global_search?.trim()) {
@@ -201,26 +291,10 @@ export function buildCarrierQuery(
     q = q.in('form_of_business', filters.form_of_business);
   }
 
-  // Equipment & Fleet Filters — filter on the real embedded `vehicles` relation.
+  // Equipment Filter for No Equipment
   if (wantsNoEquipment) {
     // Left-joined with no matching vehicle row = carrier has none on file.
     q = q.is('vehicles.id', null);
-  } else if (wantsSpecificEquipment) {
-    const clauses: string[] = [];
-    activeEquipmentTypes.forEach(t => {
-      equipmentKeywordPatterns(t).forEach(p => clauses.push(`vehicle_type.ilike.%${p}%`));
-    });
-    if (clauses.length > 0) {
-      q = q.or(clauses.join(','), { foreignTable: 'vehicles' });
-    }
-  }
-  // wantsHasEquipment needs no extra filter — the `vehicles!inner(id)` embed
-  // above already requires at least one matching vehicle row to exist.
-
-  // Cargo Type Filters — filter on the real embedded `cargo_classifications` relation.
-  if (wantsCargo) {
-    const clauses = activeCargoTypes.map(c => `classification.ilike.%${c}%`);
-    q = q.or(clauses.join(','), { foreignTable: 'cargo_classifications' });
   }
 
   // Date Filters
