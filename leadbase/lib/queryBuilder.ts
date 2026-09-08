@@ -82,28 +82,49 @@ function getEquipmentCargoIntent(filters: FilterState) {
   return { activeEquipmentTypes, wantsNoEquipment, wantsHasEquipment, wantsSpecificEquipment, activeCargoTypes, wantsCargo };
 }
 
-// Resolves candidate carrier IDs for equipment_types/cargo_types/has_equipment
-// filters via a cheap lookup against the small `vehicles`/`cargo_classifications`
-// tables, instead of joining against the full 4.1M-row `carriers` table (which
-// timed out — Postgres has to evaluate the join condition per carrier row even
-// when the joined table is empty). Callers MUST await this before calling the
-// (synchronous) buildCarrierQuery and pass the result through, since
-// PostgrestFilterBuilder is itself "thenable" — an async function that
-// `return`s one gets its result auto-unwrapped by JS at runtime, which would
-// silently break every caller's .order()/.range() chaining.
-// Returns null if no equipment/cargo filter is active (no restriction needed).
+// Resolved equipment/cargo restriction: `include` narrows to these carrier
+// ids (null = no restriction, [] = filter active but matched nothing);
+// `exclude` removes these carrier ids (used for "No Equipment", i.e. NOT
+// EXISTS emulation — see note below on why this can't be a joined filter).
+export type EquipmentCargoFilter = { include: number[] | null; exclude: number[] | null };
+
+// Resolves candidate carrier IDs for equipment_types/cargo_types/has_equipment/
+// no_equipment filters via a cheap lookup against the small `vehicles`/
+// `cargo_classifications` tables, instead of joining against the full 4.1M-row
+// `carriers` table (which timed out — Postgres has to evaluate the join
+// condition per carrier row even when the joined table is empty). Callers
+// MUST await this before calling the (synchronous) buildCarrierQuery and pass
+// the result through, since PostgrestFilterBuilder is itself "thenable" — an
+// async function that `return`s one gets its result auto-unwrapped by JS at
+// runtime, which would silently break every caller's .order()/.range() chaining.
+//
+// "No Equipment" needs its own lookup rather than a `vehicles!left(id)` embed
+// + `.is('vehicles.id', null)` filter (the previous approach): PostgREST only
+// applies embedded-resource filters to the nested array itself unless the
+// embed is `!inner` — without `!inner` the parent carrier row is returned
+// regardless of whether any embedded row matched, so that filter silently
+// matched 100% of carriers. Building an explicit exclude-list of carrier ids
+// that DO have a vehicle row (mirroring the include-list pattern above) and
+// applying it via `.not('id', 'in', ...)` actually excludes at the parent level.
 export async function resolveEquipmentCargoIds(
   supabaseAdmin: SupabaseClient,
   filters: FilterState
-): Promise<number[] | null> {
-  const { activeEquipmentTypes, wantsHasEquipment, wantsSpecificEquipment, activeCargoTypes, wantsCargo } =
+): Promise<EquipmentCargoFilter> {
+  const { activeEquipmentTypes, wantsNoEquipment, wantsHasEquipment, wantsSpecificEquipment, activeCargoTypes, wantsCargo } =
     getEquipmentCargoIntent(filters);
-  if (!wantsSpecificEquipment && !wantsHasEquipment && !wantsCargo) return null;
+  if (!wantsNoEquipment && !wantsSpecificEquipment && !wantsHasEquipment && !wantsCargo) {
+    return { include: null, exclude: null };
+  }
 
   let ids: number[] | null = null;
+  let exclude: number[] | null = null;
   const intersect = (a: number[] | null, b: number[]): number[] => (a === null ? b : a.filter(id => b.includes(id)));
 
-  if (wantsSpecificEquipment || wantsHasEquipment) {
+  if (wantsNoEquipment) {
+    const { data, error } = await supabaseAdmin.from('vehicles').select('carrier_id');
+    if (error) console.error('Error pre-filtering vehicles (no-equipment):', error);
+    exclude = Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id)));
+  } else if (wantsSpecificEquipment || wantsHasEquipment) {
     let vQuery = supabaseAdmin.from('vehicles').select('carrier_id');
     if (wantsSpecificEquipment) {
       const clauses: string[] = [];
@@ -131,7 +152,8 @@ export async function resolveEquipmentCargoIds(
     ids = intersect(ids, Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id))));
   }
 
-  return ids ?? [];
+  const wantsInclude = wantsSpecificEquipment || wantsHasEquipment || wantsCargo;
+  return { include: wantsInclude ? (ids ?? []) : ids, exclude };
 }
 
 export function buildCarrierQuery(
@@ -139,21 +161,19 @@ export function buildCarrierQuery(
   filters: FilterState,
   selectFields = '*',
   includeCount = true,
-  // Precomputed via resolveEquipmentCargoIds(): undefined/null = no equipment/
-  // cargo filter active, [] = filter active but matched nothing (exclude all).
-  equipmentCargoIds?: number[] | null
+  // Precomputed via resolveEquipmentCargoIds().
+  equipmentCargoIds?: EquipmentCargoFilter | null
 ) {
-  const { wantsNoEquipment } = getEquipmentCargoIntent(filters);
+  const q0 = includeCount
+    ? supabaseAdmin.from('carriers').select(selectFields, { count: 'exact' })
+    : supabaseAdmin.from('carriers').select(selectFields);
+  let q = q0;
 
-  let selectClause = selectFields;
-  if (wantsNoEquipment) selectClause += ',vehicles!left(id)';
-
-  let q = includeCount
-    ? supabaseAdmin.from('carriers').select(selectClause, { count: 'exact' })
-    : supabaseAdmin.from('carriers').select(selectClause);
-
-  if (equipmentCargoIds != null) {
-    q = equipmentCargoIds.length === 0 ? q.eq('id', -1) : q.in('id', equipmentCargoIds);
+  if (equipmentCargoIds?.include != null) {
+    q = equipmentCargoIds.include.length === 0 ? q.eq('id', -1) : q.in('id', equipmentCargoIds.include);
+  }
+  if (equipmentCargoIds?.exclude && equipmentCargoIds.exclude.length > 0) {
+    q = q.not('id', 'in', `(${equipmentCargoIds.exclude.join(',')})`);
   }
 
   // Global Search
@@ -282,12 +302,6 @@ export function buildCarrierQuery(
   // Form of Business
   if (filters.form_of_business && filters.form_of_business.length > 0) {
     q = q.in('form_of_business', filters.form_of_business);
-  }
-
-  // Equipment Filter for No Equipment
-  if (wantsNoEquipment) {
-    // Left-joined with no matching vehicle row = carrier has none on file.
-    q = q.is('vehicles.id', null);
   }
 
   // Date Filters
