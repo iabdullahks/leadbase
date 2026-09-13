@@ -83,77 +83,79 @@ function getEquipmentCargoIntent(filters: FilterState) {
 }
 
 // Resolved equipment/cargo restriction: `include` narrows to these carrier
-// ids (null = no restriction, [] = filter active but matched nothing);
-// `exclude` removes these carrier ids (used for "No Equipment", i.e. NOT
-// EXISTS emulation — see note below on why this can't be a joined filter).
-export type EquipmentCargoFilter = { include: number[] | null; exclude: number[] | null };
+// ids (null = no restriction, [] = filter active but matched nothing).
+export type EquipmentCargoFilter = { include: number[] | null };
 
-// Resolves candidate carrier IDs for equipment_types/cargo_types/has_equipment/
-// no_equipment filters via a cheap lookup against the small `vehicles`/
-// `cargo_classifications` tables, instead of joining against the full 4.1M-row
-// `carriers` table (which timed out — Postgres has to evaluate the join
-// condition per carrier row even when the joined table is empty). Callers
-// MUST await this before calling the (synchronous) buildCarrierQuery and pass
-// the result through, since PostgrestFilterBuilder is itself "thenable" — an
-// async function that `return`s one gets its result auto-unwrapped by JS at
-// runtime, which would silently break every caller's .order()/.range() chaining.
+// Resolves candidate carrier IDs for equipment_types/cargo_types filters via
+// a cheap lookup against the small `vehicles`/`cargo_classifications` tables,
+// instead of joining against the full 4.1M-row `carriers` table (which timed
+// out — Postgres has to evaluate the join condition per carrier row even
+// when the joined table is empty). Callers MUST await this before calling
+// the (synchronous) buildCarrierQuery and pass the result through, since
+// PostgrestFilterBuilder is itself "thenable" — an async function that
+// `return`s one gets its result auto-unwrapped by JS at runtime, which would
+// silently break every caller's .order()/.range() chaining.
 //
-// "No Equipment" needs its own lookup rather than a `vehicles!left(id)` embed
-// + `.is('vehicles.id', null)` filter (the previous approach): PostgREST only
-// applies embedded-resource filters to the nested array itself unless the
-// embed is `!inner` — without `!inner` the parent carrier row is returned
-// regardless of whether any embedded row matched, so that filter silently
-// matched 100% of carriers. Building an explicit exclude-list of carrier ids
-// that DO have a vehicle row (mirroring the include-list pattern above) and
-// applying it via `.not('id', 'in', ...)` actually excludes at the parent level.
+// "No Equipment"/"Has Equipment" are NOT handled here — they're a plain
+// `carriers.has_equipment` boolean filter applied directly in
+// buildCarrierQuery (see supabase/migrations/20260909_has_equipment_flag.sql).
+// An earlier version of this function computed the full list of carrier ids
+// that DO have a vehicle row and passed it to `.not('id', 'in', ...)`/
+// `.in('id', ...)`, but that list is now 900K+ entries (the equipment
+// backfill's progress) — inlining that many ids into a PostgREST URL filter
+// blows past request size limits and the query throws outright. A persisted,
+// indexed boolean column avoids transmitting any id list at all.
+//
+// The remaining equipment_types/cargo_types lookups go through the
+// `distinct_vehicle_carrier_ids`/`distinct_cargo_carrier_ids` RPCs (see
+// supabase/migrations/20260909_distinct_carrier_id_rpc.sql) rather than a
+// plain `.select()` + client-side de-dupe: this project's PostgREST caps
+// every response at 1000 rows regardless of `.range()`, so a raw `.select()`
+// would silently only ever see the first ~1000 rows ever inserted once these
+// tables grew past that. The RPCs aggregate DISTINCT carrier_id into a
+// single array column server-side — PostgREST's cap limits rows per
+// response, not the size of one array value within a single row, so this
+// sidesteps that. NOTE: these include-lists carry the same 900K-row URL-size
+// risk as the old no/has-equipment path once a specific equipment/cargo
+// category matches a large enough fraction of carriers — currently safe
+// (categories match far smaller subsets), but worth watching as the backfill
+// completes further.
 export async function resolveEquipmentCargoIds(
   supabaseAdmin: SupabaseClient,
   filters: FilterState
 ): Promise<EquipmentCargoFilter> {
-  const { activeEquipmentTypes, wantsNoEquipment, wantsHasEquipment, wantsSpecificEquipment, activeCargoTypes, wantsCargo } =
+  const { activeEquipmentTypes, wantsSpecificEquipment, activeCargoTypes, wantsCargo } =
     getEquipmentCargoIntent(filters);
-  if (!wantsNoEquipment && !wantsSpecificEquipment && !wantsHasEquipment && !wantsCargo) {
-    return { include: null, exclude: null };
+  if (!wantsSpecificEquipment && !wantsCargo) {
+    return { include: null };
   }
 
   let ids: number[] | null = null;
-  let exclude: number[] | null = null;
   const intersect = (a: number[] | null, b: number[]): number[] => (a === null ? b : a.filter(id => b.includes(id)));
 
-  if (wantsNoEquipment) {
-    const { data, error } = await supabaseAdmin.from('vehicles').select('carrier_id');
-    if (error) console.error('Error pre-filtering vehicles (no-equipment):', error);
-    exclude = Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id)));
-  } else if (wantsSpecificEquipment || wantsHasEquipment) {
-    let vQuery = supabaseAdmin.from('vehicles').select('carrier_id');
-    if (wantsSpecificEquipment) {
-      const clauses: string[] = [];
-      activeEquipmentTypes.forEach(t => {
-        equipmentKeywordPatterns(t).forEach(p => clauses.push(`vehicle_type.ilike.%${p}%`));
-      });
-      if (clauses.length > 0) vQuery = vQuery.or(clauses.join(','));
-    }
-    const { data, error } = await vQuery;
+  if (wantsSpecificEquipment) {
+    const patterns: string[] = [];
+    activeEquipmentTypes.forEach(t => {
+      equipmentKeywordPatterns(t).forEach(p => patterns.push(`%${p}%`));
+    });
+    const { data, error } = await supabaseAdmin.rpc('distinct_vehicle_carrier_ids', { patterns });
     if (error) console.error('Error pre-filtering vehicles:', error);
-    ids = intersect(ids, Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id))));
+    ids = intersect(ids, (data as number[] | null) ?? []);
   }
 
   if (wantsCargo) {
-    let cQuery = supabaseAdmin.from('cargo_classifications').select('carrier_id');
-    const clauses: string[] = [];
+    const patterns: string[] = [];
     activeCargoTypes.forEach(c => {
       cargoKeywordPatterns(c).forEach(({ pattern, exact }) => {
-        clauses.push(exact ? `classification.ilike.${pattern}` : `classification.ilike.%${pattern}%`);
+        patterns.push(exact ? pattern : `%${pattern}%`);
       });
     });
-    if (clauses.length > 0) cQuery = cQuery.or(clauses.join(','));
-    const { data, error } = await cQuery;
+    const { data, error } = await supabaseAdmin.rpc('distinct_cargo_carrier_ids', { patterns });
     if (error) console.error('Error pre-filtering cargo:', error);
-    ids = intersect(ids, Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id))));
+    ids = intersect(ids, (data as number[] | null) ?? []);
   }
 
-  const wantsInclude = wantsSpecificEquipment || wantsHasEquipment || wantsCargo;
-  return { include: wantsInclude ? (ids ?? []) : ids, exclude };
+  return { include: (wantsSpecificEquipment || wantsCargo) ? (ids ?? []) : ids };
 }
 
 export function buildCarrierQuery(
@@ -164,6 +166,8 @@ export function buildCarrierQuery(
   // Precomputed via resolveEquipmentCargoIds().
   equipmentCargoIds?: EquipmentCargoFilter | null
 ) {
+  const { wantsNoEquipment, wantsHasEquipment } = getEquipmentCargoIntent(filters);
+
   const q0 = includeCount
     ? supabaseAdmin.from('carriers').select(selectFields, { count: 'exact' })
     : supabaseAdmin.from('carriers').select(selectFields);
@@ -172,9 +176,10 @@ export function buildCarrierQuery(
   if (equipmentCargoIds?.include != null) {
     q = equipmentCargoIds.include.length === 0 ? q.eq('id', -1) : q.in('id', equipmentCargoIds.include);
   }
-  if (equipmentCargoIds?.exclude && equipmentCargoIds.exclude.length > 0) {
-    q = q.not('id', 'in', `(${equipmentCargoIds.exclude.join(',')})`);
-  }
+  // Persisted, indexed boolean (see supabase/migrations/20260909_has_equipment_flag.sql)
+  // instead of an ID-list filter — see resolveEquipmentCargoIds()'s comment for why.
+  if (wantsNoEquipment) q = q.eq('has_equipment', false);
+  else if (wantsHasEquipment) q = q.eq('has_equipment', true);
 
   // Global Search
   if (filters.global_search?.trim()) {
