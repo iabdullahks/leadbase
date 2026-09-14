@@ -16,23 +16,15 @@ interface EquipmentOption {
 }
 
 const EQUIPMENT_OPTIONS: EquipmentOption[] = [
-  { value: 'both', label: 'All / Non-Filter', icon: '🔄', category: 'status' },
-  { value: 'no_equipment', label: 'No Equipment', icon: '🚫', category: 'status' },
-  { value: 'has_equipment', label: 'Has Equipment', icon: '✅', category: 'status' },
-  { value: 'Power Only', label: 'Power Only', icon: '⚡', category: 'type' },
-  { value: 'Box Truck', label: 'Box Truck', icon: '📦', category: 'type' },
-  { value: 'Cargo Van', label: 'Cargo Van', icon: '🚐', category: 'type' },
-  { value: 'Hauler', label: 'Hauler (Car/Auto)', icon: '🚗', category: 'type' },
-  { value: 'Hotshot', label: 'Hotshot', icon: '🚀', category: 'type' },
-  { value: 'Tractor', label: 'Tractor', icon: '🚚', category: 'type' },
-  { value: 'Truck', label: 'Truck', icon: '🚛', category: 'type' },
-  { value: 'Trailer', label: 'Trailer', icon: '📦', category: 'type' },
-  { value: 'Van', label: 'Van / Dry Van', icon: '🚐', category: 'type' },
-  { value: 'Flatbed', label: 'Flatbed', icon: '🏗️', category: 'type' },
-  { value: 'Refrigerated (Reefer)', label: 'Refrigerated (Reefer)', icon: '❄️', category: 'type' },
-  { value: 'Tanker', label: 'Tanker', icon: '🛢️', category: 'type' },
-  { value: 'Dump Truck', label: 'Dump Truck', icon: '🚜', category: 'type' },
-  { value: 'Specialized', label: 'Specialized', icon: '⚙️', category: 'type' },
+  { value: 'both',          label: 'All / Non-Filter',     icon: '🔄', category: 'status' },
+  { value: 'no_equipment',  label: 'No Equipment',         icon: '🚫', category: 'status' },
+  { value: 'has_equipment', label: 'Has Equipment',        icon: '✅', category: 'status' },
+  // Types map to FMCSA vehicle_type values in the vehicles table.
+  { value: 'Tractor',        label: 'Tractor / Power Only', icon: '🚚', category: 'type' },
+  { value: 'Trailer',        label: 'Trailer',              icon: '🚛', category: 'type' },
+  { value: 'Straight Truck', label: 'Straight Truck',       icon: '📦', category: 'type' },
+  { value: 'Van',            label: 'Van / Cargo Van',      icon: '🚐', category: 'type' },
+  { value: 'Hauling',        label: 'Hauling (Car/Auto)',   icon: '🚗', category: 'type' },
 ];
 
 export default function EquipmentDropdown({ filters, onChange }: EquipmentDropdownProps) {

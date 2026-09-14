@@ -12,6 +12,7 @@ import ExportHistoryDrawer from './components/ExportHistoryDrawer';
 import ColumnVisibilityModal from './components/ColumnVisibilityModal';
 import EquipmentDropdown from './components/EquipmentDropdown';
 import StatusDropdown from './components/StatusDropdown';
+import DateDropdown from './components/DateDropdown';
 import SortDropdown from './components/SortDropdown';
 import { downloadSingleLeadCsv } from '@/lib/exportSingleLead';
 
@@ -277,6 +278,15 @@ export default function LeadsPage() {
 
           {/* Quick Equipment Filter (Custom Dark Popover) */}
           <EquipmentDropdown
+            filters={filters}
+            onChange={next => {
+              setFilters(next);
+              fetchLeads(1, next, sortCol, sortDir);
+            }}
+          />
+
+          {/* Quick Date Filter (Custom Range & Presets) */}
+          <DateDropdown
             filters={filters}
             onChange={next => {
               setFilters(next);

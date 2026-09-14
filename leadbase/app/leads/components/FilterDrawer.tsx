@@ -20,20 +20,11 @@ const CARGO_TYPES = [
 const EQUIPMENT_TYPES = [
   'All / Non-Filter',
   'No Equipment',
-  'Power Only',
-  'Box Truck',
-  'Cargo Van',
-  'Hauler',
-  'Hotshot',
   'Tractor',
-  'Truck',
   'Trailer',
-  'Van / Dry Van',
-  'Flatbed',
-  'Refrigerated (Reefer)',
-  'Tanker',
-  'Dump Truck',
-  'Specialized'
+  'Straight Truck',
+  'Van',
+  'Hauling',
 ];
 
 interface FilterDrawerProps {
@@ -63,7 +54,7 @@ export default function FilterDrawer({
     ident: true,
     status: true,
     contact: true,
-    location: false,
+    location: true,
     fleet: true,
     cargo: false,
     dates: true,
@@ -72,9 +63,11 @@ export default function FilterDrawer({
   });
 
   useEffect(() => {
-    setDraft(filters);
-    setPreviewCount(totalCount);
-  }, [filters, isOpen, totalCount]);
+    if (isOpen) {
+      setDraft(filters);
+      setPreviewCount(totalCount);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -205,7 +198,7 @@ export default function FilterDrawer({
             </div>
             {expandedSections.ident && (
               <div className="fp-sec-content">
-                <div className="fp-grid-2">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
                   <div>
                     <label className="fp-label">Match Type</label>
                     <select
@@ -244,13 +237,31 @@ export default function FilterDrawer({
                   </div>
                 </div>
                 {(!draft.id_match_type || draft.id_match_type === 'starts_from') ? (
-                  <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.78rem', color: '#60a5fa' }}>
-                    💡 Showing all carriers starting from USDOT {draft.usdot?.trim() || '4582560'} onwards till the end of the database (58,537 leads). Shorter numbers like 96466 are strictly excluded.
-                  </p>
+                  <div style={{
+                    marginTop: '0.5rem',
+                    padding: '0.45rem 0.65rem',
+                    borderRadius: '6px',
+                    background: 'rgba(96,165,250,0.08)',
+                    border: '1px solid rgba(96,165,250,0.2)',
+                    fontSize: '0.75rem',
+                    color: '#93c5fd',
+                    lineHeight: 1.4,
+                  }}>
+                    💡 Showing carriers starting from USDOT <strong>{draft.usdot?.trim() || '4582560'}</strong> onwards to the end of the database.
+                  </div>
                 ) : draft.id_match_type === 'starts_with' ? (
-                  <p style={{ margin: '0.4rem 0 0 0', fontSize: '0.78rem', color: '#60a5fa' }}>
-                    💡 Showing all carriers with USDOT starting with prefix &ldquo;{draft.usdot?.trim() || '4582'}&rdquo;...
-                  </p>
+                  <div style={{
+                    marginTop: '0.5rem',
+                    padding: '0.45rem 0.65rem',
+                    borderRadius: '6px',
+                    background: 'rgba(96,165,250,0.08)',
+                    border: '1px solid rgba(96,165,250,0.2)',
+                    fontSize: '0.75rem',
+                    color: '#93c5fd',
+                    lineHeight: 1.4,
+                  }}>
+                    💡 Showing carriers with USDOT prefix &ldquo;{draft.usdot?.trim() || '4582'}&rdquo;...
+                  </div>
                 ) : null}
                 <div className="fp-row">
                   <label className="fp-label">Company / Legal Name</label>
@@ -307,26 +318,66 @@ export default function FilterDrawer({
             </div>
             {expandedSections.contact && (
               <div className="fp-sec-content">
-                <div className="fp-grid-2">
-                  <label className={`fp-chip-check ${draft.has_phone === true ? 'selected' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={draft.has_phone === true}
-                      onChange={e => setDraft({ ...draft, has_phone: e.target.checked ? true : null })}
-                    />
-                    📞 Has Phone Number
-                  </label>
-                  <label className={`fp-chip-check ${draft.has_email === true ? 'selected' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={draft.has_email === true}
-                      onChange={e => setDraft({ ...draft, has_email: e.target.checked ? true : null })}
-                    />
-                    ✉️ Has Email Address
-                  </label>
+                <div>
+                  <label className="fp-label">Available Contact Details</label>
+                  <div className="fp-grid-2">
+                    <label className={`fp-chip-check ${draft.has_phone === true ? 'selected' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={draft.has_phone === true}
+                        onChange={e => setDraft({ ...draft, has_phone: e.target.checked ? true : null })}
+                      />
+                      📞 Has Phone
+                    </label>
+                    <label className={`fp-chip-check ${draft.has_email === true ? 'selected' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={draft.has_email === true}
+                        onChange={e => setDraft({ ...draft, has_email: e.target.checked ? true : null })}
+                      />
+                      ✉️ Has Email
+                    </label>
+                  </div>
                 </div>
-                <div style={{ marginTop: '0.8rem' }}>
-                  <label className="fp-label">Contact Completeness</label>
+
+                <div>
+                  <label className="fp-label">Missing Contact Details</label>
+                  <div className="fp-grid-2">
+                    <label
+                      className={`fp-chip-check ${draft.has_phone === false ? 'selected' : ''}`}
+                      style={{
+                        borderColor: draft.has_phone === false ? 'rgba(239,68,68,0.5)' : undefined,
+                        background: draft.has_phone === false ? 'rgba(239,68,68,0.08)' : undefined,
+                        color: draft.has_phone === false ? '#f87171' : undefined,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draft.has_phone === false}
+                        onChange={e => setDraft({ ...draft, has_phone: e.target.checked ? false : null })}
+                      />
+                      🚫 Missing Phone
+                    </label>
+                    <label
+                      className={`fp-chip-check ${draft.has_email === false ? 'selected' : ''}`}
+                      style={{
+                        borderColor: draft.has_email === false ? 'rgba(239,68,68,0.5)' : undefined,
+                        background: draft.has_email === false ? 'rgba(239,68,68,0.08)' : undefined,
+                        color: draft.has_email === false ? '#f87171' : undefined,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draft.has_email === false}
+                        onChange={e => setDraft({ ...draft, has_email: e.target.checked ? false : null })}
+                      />
+                      🚫 Missing Email
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="fp-label">Completeness Preset</label>
                   <select
                     className="fp-select"
                     value={draft.contact_completeness || ''}
@@ -400,38 +451,45 @@ export default function FilterDrawer({
             </div>
             {expandedSections.fleet && (
               <div className="fp-sec-content">
-                {/* Equipment Status Filter (Option 2: Both / Has / None) */}
-                <div style={{ marginBottom: '0.8rem' }}>
-                  <label className="fp-label">Filter Option: Status</label>
-                  <div className="fp-grid-2">
-                    <label className={`fp-chip-check ${draft.equipment_mode === 'all' || !draft.equipment_mode || draft.equipment_mode === 'both' ? 'selected' : ''}`}>
+                {/* Equipment Status Filter: Perfectly balanced 3-column pill grid */}
+                <div style={{ marginBottom: '0.85rem' }}>
+                  <label className="fp-label">Fleet & Equipment Status</label>
+                  <div className="fp-grid-3">
+                    <label
+                      className={`fp-chip-check ${draft.equipment_mode === 'all' || !draft.equipment_mode || draft.equipment_mode === 'both' ? 'selected' : ''}`}
+                      style={{ justifyContent: 'center', textAlign: 'center', fontSize: '0.72rem', padding: '0.45rem 0.2rem' }}
+                    >
                       <input
                         type="radio"
                         name="equipment_mode"
                         checked={draft.equipment_mode === 'all' || !draft.equipment_mode || draft.equipment_mode === 'both'}
                         onChange={() => setDraft({ ...draft, equipment_mode: 'both', equipment_types: draft.equipment_types?.filter(e => e !== 'No Equipment') || [] })}
                       />
-                      🔄 Both (All Leads)
+                      🔄 All Leads
                     </label>
-                    <label className={`fp-chip-check ${draft.equipment_mode === 'no_equipment' || (draft.equipment_types || []).includes('No Equipment') ? 'selected' : ''}`}>
-                      <input
-                        type="radio"
-                        name="equipment_mode"
-                        checked={draft.equipment_mode === 'no_equipment' || (draft.equipment_types || []).includes('No Equipment')}
-                        onChange={() => setDraft({ ...draft, equipment_mode: 'no_equipment', equipment_types: ['No Equipment'] })}
-                      />
-                      🚫 No Equipment
-                    </label>
-                  </div>
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <label className={`fp-chip-check ${draft.equipment_mode === 'has_equipment' ? 'selected' : ''}`}>
+                    <label
+                      className={`fp-chip-check ${draft.equipment_mode === 'has_equipment' ? 'selected' : ''}`}
+                      style={{ justifyContent: 'center', textAlign: 'center', fontSize: '0.72rem', padding: '0.45rem 0.2rem' }}
+                    >
                       <input
                         type="radio"
                         name="equipment_mode"
                         checked={draft.equipment_mode === 'has_equipment'}
                         onChange={() => setDraft({ ...draft, equipment_mode: 'has_equipment', equipment_types: draft.equipment_types?.filter(e => e !== 'No Equipment') || [] })}
                       />
-                      ✅ Has Equipment (Any Vehicle)
+                      ✅ Has Vehicle
+                    </label>
+                    <label
+                      className={`fp-chip-check ${draft.equipment_mode === 'no_equipment' || (draft.equipment_types || []).includes('No Equipment') ? 'selected' : ''}`}
+                      style={{ justifyContent: 'center', textAlign: 'center', fontSize: '0.72rem', padding: '0.45rem 0.2rem' }}
+                    >
+                      <input
+                        type="radio"
+                        name="equipment_mode"
+                        checked={draft.equipment_mode === 'no_equipment' || (draft.equipment_types || []).includes('No Equipment')}
+                        onChange={() => setDraft({ ...draft, equipment_mode: 'no_equipment', equipment_types: ['No Equipment'] })}
+                      />
+                      🚫 No Vehicle
                     </label>
                   </div>
                 </div>
@@ -458,16 +516,17 @@ export default function FilterDrawer({
                     let icon = '🚚';
                     if (isAll) icon = '🔄';
                     else if (isNoEq) icon = '🚫';
-                    else if (eq === 'Power Only') icon = '⚡';
-                    else if (eq === 'Box Truck') icon = '📦';
-                    else if (eq === 'Cargo Van') icon = '🚐';
-                    else if (eq === 'Hauler') icon = '🚗';
-                    else if (eq === 'Hotshot') icon = '🚀';
-                    else if (eq === 'Flatbed') icon = '🏗️';
-                    else if (eq === 'Refrigerated (Reefer)') icon = '❄️';
-                    else if (eq === 'Tanker') icon = '🛢️';
-                    else if (eq === 'Dump Truck') icon = '🚜';
-                    else if (eq === 'Specialized') icon = '⚙️';
+                    else if (eq === 'Tractor') icon = '🚚';
+                    else if (eq === 'Trailer') icon = '🚛';
+                    else if (eq === 'Straight Truck') icon = '📦';
+                    else if (eq === 'Van') icon = '🚐';
+                    else if (eq === 'Hauling') icon = '🚗';
+
+                    const label =
+                      eq === 'Tractor' ? 'Tractor / Power Only' :
+                      eq === 'Straight Truck' ? 'Straight Truck' :
+                      eq === 'Van' ? 'Van / Cargo Van' :
+                      eq === 'Hauling' ? 'Hauling (Car/Auto)' : eq;
 
                     return (
                       <button
@@ -477,7 +536,7 @@ export default function FilterDrawer({
                         style={{ padding: '0.45rem 0.5rem', fontSize: '0.76rem', textAlign: 'center', width: 'auto' }}
                         onClick={() => toggleEquipment(eq)}
                       >
-                        {icon} {eq}
+                        {icon} {label}
                       </button>
                     );
                   })}
@@ -503,7 +562,9 @@ export default function FilterDrawer({
                       onChange={e => setDraft({ ...draft, date_field: e.target.value as FilterState['date_field'] })}
                     >
                       <option value="scraped_at">Date Added to LeadBase (Scraped Date)</option>
+                      <option value="motus_create_or_update">MOTUS Created or Updated (FMCSA)</option>
                       <option value="motus_entry_date">MOTUS Entry Date (FMCSA Registration)</option>
+                      <option value="motus_last_updated">MOTUS Last Updated Date</option>
                     </select>
                   </div>
                   <div>

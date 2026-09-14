@@ -16,4 +16,6 @@ scratch/
 *.tsbuildinfo
 motus_scraper_state*.json
 import_progress.json
+*_progress.json
+*_state.json
 .temp/

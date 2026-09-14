@@ -7,11 +7,14 @@ import FilterDrawer from './components/FilterDrawer';
 import FilterChips from './components/FilterChips';
 import SavedViewsModal from './components/SavedViewsModal';
 import ExportModal from './components/ExportModal';
+import ExportErrorBoundary from './components/ExportErrorBoundary';
 import ExportHistoryDrawer from './components/ExportHistoryDrawer';
 import ColumnVisibilityModal from './components/ColumnVisibilityModal';
 import EquipmentDropdown from './components/EquipmentDropdown';
 import StatusDropdown from './components/StatusDropdown';
+import DateDropdown from './components/DateDropdown';
 import SortDropdown from './components/SortDropdown';
+import { downloadSingleLeadCsv } from '@/lib/exportSingleLead';
 
 const PAGE_SIZE = 50;
 
@@ -43,6 +46,7 @@ export default function LeadsPage() {
   // Main data state
   const [leads, setLeads] = useState<Carrier[]>([]);
   const [total, setTotal] = useState(0);
+  const [dbTotalCount, setDbTotalCount] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -104,6 +108,14 @@ export default function LeadsPage() {
 
   useEffect(() => {
     fetchLeads(1);
+    fetch('/api/stats')
+      .then(r => r.json())
+      .then(d => {
+        if (typeof d.total === 'number' && d.total > 0) {
+          setDbTotalCount(d.total);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   function handleFilterApply(newFilters: FilterState) {
@@ -144,6 +156,17 @@ export default function LeadsPage() {
       delete next.date_to;
     } else if (key === 'advanced_rules') {
       next.advanced_rules = (next.advanced_rules || []).filter(r => r.id !== val);
+    } else if (key === 'has_phone') {
+      // Remove phone filter entirely (set to null = no filter)
+      next.has_phone = null;
+    } else if (key === 'has_email') {
+      // Remove email filter entirely (set to null = no filter)
+      next.has_email = null;
+    } else if (key === 'contact_completeness') {
+      // Clear contact_completeness filter
+      next.contact_completeness = '';
+    } else if (key === 'legal_name') {
+      delete next.legal_name;
     } else {
       delete (next as Record<string, unknown>)[key];
     }
@@ -262,6 +285,15 @@ export default function LeadsPage() {
             }}
           />
 
+          {/* Quick Date Filter (Custom Range & Presets) */}
+          <DateDropdown
+            filters={filters}
+            onChange={next => {
+              setFilters(next);
+              fetchLeads(1, next, sortCol, sortDir);
+            }}
+          />
+
           {/* Quick Sort Dropdown */}
           <SortDropdown
             sortCol={sortCol}
@@ -299,7 +331,7 @@ export default function LeadsPage() {
         onRemoveFilter={handleRemoveSingleFilter}
         onClearAll={handleFilterReset}
         matchingCount={total}
-        totalCount={total}
+        totalCount={dbTotalCount || total}
       />
 
       {/* Bulk Selection Banner */}
@@ -429,10 +461,30 @@ export default function LeadsPage() {
                   {visibleCols.includes('scraped_at') && (
                     <td className="td-date">{formatDate(lead.scraped_at)}</td>
                   )}
-                  <td>
-                    <button className="btn-view" onClick={e => { e.stopPropagation(); setSelectedLead(lead); }}>
-                      View →
-                    </button>
+                  <td style={{ whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                      <button className="btn-view" onClick={() => setSelectedLead(lead)}>
+                        View →
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadSingleLeadCsv(lead)}
+                        title="Download this single lead as CSV"
+                        style={{
+                          padding: '0.3rem 0.55rem',
+                          background: 'rgba(34,211,238,0.08)',
+                          border: '1px solid rgba(34,211,238,0.25)',
+                          color: 'var(--cyan)',
+                          borderRadius: '6px',
+                          fontSize: '0.74rem',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          lineHeight: 1,
+                        }}
+                      >
+                        📥 CSV
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -459,7 +511,7 @@ export default function LeadsPage() {
         filters={filters}
         onApply={handleFilterApply}
         onReset={handleFilterReset}
-        totalCount={total}
+        totalCount={dbTotalCount || total}
       />
 
       <SavedViewsModal
@@ -469,15 +521,18 @@ export default function LeadsPage() {
         onApplyView={handleFilterApply}
       />
 
-      <ExportModal
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        filters={filters}
-        matchingCount={total}
-        selectedCount={selectedIds.length}
-        currentPageCount={leads.length}
-        selectedIds={selectedIds}
-      />
+      <ExportErrorBoundary onReset={() => setIsExportOpen(false)}>
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          filters={filters}
+          matchingCount={total || 0}
+          selectedCount={selectAllMatching ? 0 : (selectedIds?.length || 0)}
+          currentPageCount={leads?.length || 0}
+          selectedIds={selectAllMatching ? [] : (selectedIds || [])}
+          currentPageIds={(leads || []).map(l => l.usdot_number)}
+        />
+      </ExportErrorBoundary>
 
       <ExportHistoryDrawer
         isOpen={isHistoryOpen}
@@ -505,28 +560,41 @@ export default function LeadsPage() {
             </div>
             <div className="drawer-body">
               {/* Quick Actions */}
-              {(selectedLead.phone || selectedLead.email) && (
-                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  {selectedLead.phone && (
-                    <a href={`tel:${selectedLead.phone}`} className="drawer-action-link dlink-green">
-                      📞 {selectedLead.phone}
-                    </a>
-                  )}
-                  {selectedLead.email && (
-                    <a href={`mailto:${selectedLead.email}`} className="drawer-action-link dlink-purple">
-                      ✉️ {selectedLead.email}
-                    </a>
-                  )}
-                  <a
-                    href={`/leads/${selectedLead.usdot_number}`}
-                    className="drawer-action-link dlink-blue"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    🔗 Full Profile
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => downloadSingleLeadCsv(selectedLead)}
+                  className="drawer-action-link"
+                  style={{
+                    background: 'rgba(34,211,238,0.12)',
+                    border: '1px solid var(--cyan)',
+                    color: 'var(--cyan)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                  title="Download this lead as CSV"
+                >
+                  📥 Export Lead (CSV)
+                </button>
+                {selectedLead.phone && (
+                  <a href={`tel:${selectedLead.phone}`} className="drawer-action-link dlink-green">
+                    📞 {selectedLead.phone}
                   </a>
-                </div>
-              )}
+                )}
+                {selectedLead.email && (
+                  <a href={`mailto:${selectedLead.email}`} className="drawer-action-link dlink-purple">
+                    ✉️ {selectedLead.email}
+                  </a>
+                )}
+                <a
+                  href={`/leads/${selectedLead.usdot_number}`}
+                  className="drawer-action-link dlink-blue"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  🔗 Full Profile
+                </a>
+              </div>
 
               <div className="drawer-section">
                 <div className="drawer-section-title">Contact Information</div>

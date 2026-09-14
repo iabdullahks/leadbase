@@ -104,5 +104,21 @@
         "not_found": 1
       }
     }
-  ]
+  ],
+  "backfill_equipment": {
+    "last_carrier_id": 4536600,
+    "last_dot_number": "8481151",
+    "total_carriers_processed": 4117753,
+    "total_vehicles_inserted": 17166996,
+    "total_cargo_inserted": 8180791,
+    "last_batch_stats": {
+      "batch_number": 5020,
+      "carriers_processed": 53,
+      "vehicles_count": 418,
+      "cargo_count": 126,
+      "batch_duration_seconds": 7.44
+    },
+    "updated_at": "2026-09-13T16:07:10.028739+00:00",
+    "status": "in_progress"
+  }
 }

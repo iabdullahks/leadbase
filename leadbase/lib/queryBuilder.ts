@@ -8,32 +8,61 @@ export function defaultFilterState(): FilterState {
     states: [],
     cargo_types: [],
     equipment_types: [],
-    date_field: 'motus_create_or_update',
+    date_field: 'added_to_motus',
     date_preset: 'all',
     missing_fields: [],
     advanced_rules: [],
   };
 }
 
-// Keyword -> real MOTUS equipmentTypeDesc substring mapping, used to match
-// against the actual `vehicles.vehicle_type` column (populated once the
-// carrier's registration-matrix data has been backfilled).
-function equipmentKeywordPatterns(t: string): string[] {
-  const lower = t.toLowerCase();
-  if (lower.includes('power only') || lower.includes('poweronly')) return ['Power Only', 'PowerOnly'];
-  if (lower.includes('box truck') || lower.includes('boxtruck')) return ['Box Truck', 'Boxtruck'];
-  if (lower.includes('cargo van') || lower.includes('sprinter')) return ['Cargo Van', 'Sprinter'];
-  if (lower.includes('hauler') || lower.includes('car hauler') || lower.includes('auto hauler')) return ['Hauler', 'Auto Haul'];
-  if (lower.includes('hotshot') || lower.includes('hot shot')) return ['Hotshot', 'Hot Shot'];
-  if (lower.includes('flatbed')) return ['Flatbed', 'Flat Bed'];
-  if (lower.includes('reefer') || lower.includes('refrigerated')) return ['Reefer', 'Refrigerat'];
-  if (lower.includes('tanker')) return ['Tanker'];
-  if (lower.includes('dump')) return ['Dump Truck', 'Dump'];
-  if (lower.includes('tractor')) return ['Tractor'];
-  if (lower.includes('trailer')) return ['Trailer'];
-  if (lower.includes('van')) return ['Van'];
-  if (lower.includes('specialized')) return ['Specialized', 'Heavy Haul'];
-  return [t.replace(/[^a-zA-Z0-9 ]/g, '')];
+// Maps UI equipment type labels to the actual FMCSA vehicle_type
+// strings stored in the `vehicles` table.
+export const EQUIPMENT_MAPPING: Record<string, string[]> = {
+  // Tractor / Power Only → Truck Tractors
+  'tractor': ['Truck Tractors'],
+  'power only': ['Truck Tractors'],
+  'truck tractor': ['Truck Tractors'],
+
+  // Trailer → Trailers + Hazmat Cargo Tank Trailers (per user request)
+  'trailer': ['Trailers', 'Hazmat Cargo Tank Trailers'],
+  'trailers': ['Trailers', 'Hazmat Cargo Tank Trailers'],
+  'tanker': ['Hazmat Cargo Tank Trailers'],
+
+  // Straight Truck / Box Truck / Flatbed / Dump Truck → Straight Trucks
+  'straight truck': ['Straight Trucks'],
+  'box truck': ['Straight Trucks'],
+  'truck': ['Straight Trucks'],
+  'flatbed': ['Straight Trucks'],
+  'dump truck': ['Straight Trucks'],
+
+  // Van / Cargo Van → Van 1-8, Van 9-15, Van 16+
+  'van': ['Van 1-8', 'Van 9-15', 'Van 16+'],
+  'cargo van': ['Van 1-8', 'Van 9-15', 'Van 16+'],
+  'van / cargo van': ['Van 1-8', 'Van 9-15', 'Van 16+'],
+  'van / dry van': ['Van 1-8', 'Van 9-15', 'Van 16+'],
+
+  // Hauling (Car/Auto) / Hauler → Non-commercial Motor Vehicles (per user request)
+  'hauling': ['Non-commercial Motor Vehicles'],
+  'hauler': ['Non-commercial Motor Vehicles'],
+  'hauling (car/auto)': ['Non-commercial Motor Vehicles'],
+};
+
+export function getFmcsaVehicleTypes(equipmentTypes: string[]): string[] {
+  const result = new Set<string>();
+  for (const t of equipmentTypes) {
+    const lower = t.toLowerCase().trim();
+    let matched = false;
+    for (const [key, fmcsaTypes] of Object.entries(EQUIPMENT_MAPPING)) {
+      if (lower === key || lower.includes(key)) {
+        fmcsaTypes.forEach(ft => result.add(ft));
+        matched = true;
+      }
+    }
+    if (!matched && t) {
+      result.add(t);
+    }
+  }
+  return Array.from(result);
 }
 
 // Keyword -> real MOTUS classification substring mapping, used to match
@@ -75,85 +104,60 @@ function getEquipmentCargoIntent(filters: FilterState) {
   );
   const wantsNoEquipment =
     filters.equipment_mode === 'no_equipment' || (filters.equipment_types || []).includes('No Equipment');
-  const wantsHasEquipment = filters.equipment_mode === 'has_equipment' && !wantsNoEquipment;
   const wantsSpecificEquipment = !wantsNoEquipment && activeEquipmentTypes.length > 0;
+  // wantsHasEquipment is ONLY true when the user picked the generic "Has Equipment" mode
+  // with NO specific type selected. When specific types are chosen, buildCarrierQuery joins
+  // vehicles!inner directly — adding has_equipment=true on top is redundant.
+  const wantsHasEquipment =
+    filters.equipment_mode === 'has_equipment' && !wantsNoEquipment && !wantsSpecificEquipment;
   const activeCargoTypes = filters.cargo_types || [];
   const wantsCargo = activeCargoTypes.length > 0;
   return { activeEquipmentTypes, wantsNoEquipment, wantsHasEquipment, wantsSpecificEquipment, activeCargoTypes, wantsCargo };
 }
 
 // Resolved equipment/cargo restriction: `include` narrows to these carrier
-// ids (null = no restriction, [] = filter active but matched nothing);
-// `exclude` removes these carrier ids (used for "No Equipment", i.e. NOT
-// EXISTS emulation — see note below on why this can't be a joined filter).
-export type EquipmentCargoFilter = { include: number[] | null; exclude: number[] | null };
+// ids (null = no restriction, [] = filter active but matched nothing).
+export type EquipmentCargoFilter = { include: number[] | null };
 
-// Resolves candidate carrier IDs for equipment_types/cargo_types/has_equipment/
-// no_equipment filters via a cheap lookup against the small `vehicles`/
-// `cargo_classifications` tables, instead of joining against the full 4.1M-row
-// `carriers` table (which timed out — Postgres has to evaluate the join
-// condition per carrier row even when the joined table is empty). Callers
-// MUST await this before calling the (synchronous) buildCarrierQuery and pass
-// the result through, since PostgrestFilterBuilder is itself "thenable" — an
-// async function that `return`s one gets its result auto-unwrapped by JS at
-// runtime, which would silently break every caller's .order()/.range() chaining.
-//
-// "No Equipment" needs its own lookup rather than a `vehicles!left(id)` embed
-// + `.is('vehicles.id', null)` filter (the previous approach): PostgREST only
-// applies embedded-resource filters to the nested array itself unless the
-// embed is `!inner` — without `!inner` the parent carrier row is returned
-// regardless of whether any embedded row matched, so that filter silently
-// matched 100% of carriers. Building an explicit exclude-list of carrier ids
-// that DO have a vehicle row (mirroring the include-list pattern above) and
-// applying it via `.not('id', 'in', ...)` actually excludes at the parent level.
+// Specific equipment types are handled natively via `vehicles!inner` resource
+// embedding directly in `buildCarrierQuery` to avoid transferring massive ID arrays
+// that blow past PostgREST URL length limits.
+// This function remains for cargo lookups or backwards compatibility.
 export async function resolveEquipmentCargoIds(
   supabaseAdmin: SupabaseClient,
   filters: FilterState
 ): Promise<EquipmentCargoFilter> {
-  const { activeEquipmentTypes, wantsNoEquipment, wantsHasEquipment, wantsSpecificEquipment, activeCargoTypes, wantsCargo } =
+  const { wantsSpecificEquipment, activeCargoTypes, wantsCargo } =
     getEquipmentCargoIntent(filters);
-  if (!wantsNoEquipment && !wantsSpecificEquipment && !wantsHasEquipment && !wantsCargo) {
-    return { include: null, exclude: null };
+
+  // Specific equipment is handled directly inside buildCarrierQuery via vehicles!inner join
+  if (!wantsCargo) {
+    return { include: null };
   }
 
   let ids: number[] | null = null;
-  let exclude: number[] | null = null;
+  let rpcFailed = false;
   const intersect = (a: number[] | null, b: number[]): number[] => (a === null ? b : a.filter(id => b.includes(id)));
 
-  if (wantsNoEquipment) {
-    const { data, error } = await supabaseAdmin.from('vehicles').select('carrier_id');
-    if (error) console.error('Error pre-filtering vehicles (no-equipment):', error);
-    exclude = Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id)));
-  } else if (wantsSpecificEquipment || wantsHasEquipment) {
-    let vQuery = supabaseAdmin.from('vehicles').select('carrier_id');
-    if (wantsSpecificEquipment) {
-      const clauses: string[] = [];
-      activeEquipmentTypes.forEach(t => {
-        equipmentKeywordPatterns(t).forEach(p => clauses.push(`vehicle_type.ilike.%${p}%`));
-      });
-      if (clauses.length > 0) vQuery = vQuery.or(clauses.join(','));
-    }
-    const { data, error } = await vQuery;
-    if (error) console.error('Error pre-filtering vehicles:', error);
-    ids = intersect(ids, Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id))));
-  }
-
   if (wantsCargo) {
-    let cQuery = supabaseAdmin.from('cargo_classifications').select('carrier_id');
-    const clauses: string[] = [];
+    const patterns: string[] = [];
     activeCargoTypes.forEach(c => {
       cargoKeywordPatterns(c).forEach(({ pattern, exact }) => {
-        clauses.push(exact ? `classification.ilike.${pattern}` : `classification.ilike.%${pattern}%`);
+        patterns.push(exact ? pattern : `%${pattern}%`);
       });
     });
-    if (clauses.length > 0) cQuery = cQuery.or(clauses.join(','));
-    const { data, error } = await cQuery;
-    if (error) console.error('Error pre-filtering cargo:', error);
-    ids = intersect(ids, Array.from(new Set((data || []).map((r: { carrier_id: number }) => r.carrier_id))));
+    const { data, error } = await supabaseAdmin.rpc('distinct_cargo_carrier_ids', { patterns });
+    if (error) {
+      console.error('Error pre-filtering cargo (RPC failed — returning no restriction):', error);
+      rpcFailed = true;
+    } else {
+      ids = intersect(ids, (data as number[] | null) ?? []);
+    }
   }
 
-  const wantsInclude = wantsSpecificEquipment || wantsHasEquipment || wantsCargo;
-  return { include: wantsInclude ? (ids ?? []) : ids, exclude };
+  if (rpcFailed) return { include: null };
+
+  return { include: wantsCargo ? (ids ?? []) : ids };
 }
 
 export function buildCarrierQuery(
@@ -164,17 +168,44 @@ export function buildCarrierQuery(
   // Precomputed via resolveEquipmentCargoIds().
   equipmentCargoIds?: EquipmentCargoFilter | null
 ) {
+  const { wantsNoEquipment, wantsHasEquipment, wantsSpecificEquipment, activeEquipmentTypes } =
+    getEquipmentCargoIntent(filters);
+
+  // When joining on vehicles, an exact count over 17.16M rows hits Postgres statement_timeout (8s).
+  // Using count: 'estimated' uses Postgres query planner EXPLAIN statistics, returning in <0.25s
+  // and keeping pagination working seamlessly.
+  const countOption = wantsSpecificEquipment ? 'estimated' : 'exact';
+
+  // Ensure selectFields includes vehicles!inner if filtering by specific equipment
+  let effectiveSelect = selectFields;
+  if (wantsSpecificEquipment && !effectiveSelect.includes('vehicles!inner')) {
+    effectiveSelect = effectiveSelect === '*'
+      ? '*, vehicles!inner(vehicle_type)'
+      : `${effectiveSelect}, vehicles!inner(vehicle_type)`;
+  }
+
   const q0 = includeCount
-    ? supabaseAdmin.from('carriers').select(selectFields, { count: 'exact' })
-    : supabaseAdmin.from('carriers').select(selectFields);
+    ? supabaseAdmin.from('carriers').select(effectiveSelect, { count: countOption })
+    : supabaseAdmin.from('carriers').select(effectiveSelect);
   let q = q0;
 
-  if (equipmentCargoIds?.include != null) {
+  // Specific Equipment Types filter via native PostgREST inner join:
+  if (wantsSpecificEquipment) {
+    const fmcsaTypes = getFmcsaVehicleTypes(activeEquipmentTypes);
+    if (fmcsaTypes.length > 0) {
+      q = q.in('vehicles.vehicle_type', fmcsaTypes);
+    }
+  }
+
+  // Precomputed candidate IDs (used for cargo or explicit inclusion, if not specific equipment)
+  if (!wantsSpecificEquipment && equipmentCargoIds?.include != null) {
     q = equipmentCargoIds.include.length === 0 ? q.eq('id', -1) : q.in('id', equipmentCargoIds.include);
   }
-  if (equipmentCargoIds?.exclude && equipmentCargoIds.exclude.length > 0) {
-    q = q.not('id', 'in', `(${equipmentCargoIds.exclude.join(',')})`);
-  }
+
+  // Persisted, indexed boolean (see supabase/migrations/20260909_has_equipment_flag.sql)
+  // instead of an ID-list filter — see resolveEquipmentCargoIds()'s comment for why.
+  if (wantsNoEquipment) q = q.eq('has_equipment', false);
+  else if (wantsHasEquipment) q = q.eq('has_equipment', true);
 
   // Global Search
   if (filters.global_search?.trim()) {
@@ -182,9 +213,11 @@ export function buildCarrierQuery(
     q = q.or(`legal_name.ilike.%${s}%,dba_name.ilike.%${s}%,usdot_number.ilike.%${s}%,phone.ilike.%${s}%,email.ilike.%${s}%,principal_address.ilike.%${s}%`);
   }
 
-  // Identification Filters
-  if (filters.usdot?.trim()) {
-    const v = filters.usdot.trim();
+  // Identification Filters (USDOT) - supports filters.usdot, filters.dotFrom, filters.dot_number
+  const anyF = filters as unknown as Record<string, unknown>;
+  const rawDot = (filters.usdot || anyF.dotFrom || anyF.dot_number || anyF.usdot_from || '').toString().trim();
+  if (rawDot) {
+    const v = rawDot;
     if (filters.id_match_type === 'exact') {
       q = q.eq('usdot_number', v);
     } else if (filters.id_match_type === 'starts_with') {
@@ -203,6 +236,11 @@ export function buildCarrierQuery(
         q = q.ilike('usdot_number', `${v}%`);
       }
     }
+  }
+
+  const rawDotTo = (filters.usdot_to || anyF.dotTo || '').toString().trim();
+  if (rawDotTo && /^\d+$/.test(rawDotTo)) {
+    q = q.lte('usdot_number_num', Number(rawDotTo));
   }
 
   if (filters.company_name?.trim()) {
@@ -305,7 +343,7 @@ export function buildCarrierQuery(
   }
 
   // Date Filters
-  const dateCol = filters.date_field || 'scraped_at';
+  const dateCol = filters.date_field || 'added_to_motus';
   const now = new Date();
 
   let fromIso: string | null = null;

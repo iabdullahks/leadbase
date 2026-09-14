@@ -22,7 +22,7 @@ const DEFAULT_PRESET_VIEWS: SavedView[] = [
       states: ['TX'],
       cargo_types: [],
       equipment_types: [],
-      date_field: 'scraped_at',
+      date_field: 'motus_create_or_update',
       date_preset: 'last_30d',
       missing_fields: [],
       advanced_rules: []
@@ -42,7 +42,7 @@ const DEFAULT_PRESET_VIEWS: SavedView[] = [
       contact_completeness: 'phone_email',
       cargo_types: [],
       equipment_types: [],
-      date_field: 'scraped_at',
+      date_field: 'motus_create_or_update',
       date_preset: 'all',
       missing_fields: [],
       advanced_rules: []
@@ -59,7 +59,7 @@ const DEFAULT_PRESET_VIEWS: SavedView[] = [
       states: [],
       cargo_types: [],
       equipment_types: [],
-      date_field: 'scraped_at',
+      date_field: 'motus_create_or_update',
       date_preset: 'last_7d',
       missing_fields: [],
       advanced_rules: []

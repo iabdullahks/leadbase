@@ -20,20 +20,11 @@ const CARGO_TYPES = [
 const EQUIPMENT_TYPES = [
   'All / Non-Filter',
   'No Equipment',
-  'Power Only',
-  'Box Truck',
-  'Cargo Van',
-  'Hauler',
-  'Hotshot',
   'Tractor',
-  'Truck',
   'Trailer',
-  'Van / Dry Van',
-  'Flatbed',
-  'Refrigerated (Reefer)',
-  'Tanker',
-  'Dump Truck',
-  'Specialized'
+  'Straight Truck',
+  'Van',
+  'Hauling',
 ];
 
 interface FilterDrawerProps {
@@ -525,16 +516,17 @@ export default function FilterDrawer({
                     let icon = '🚚';
                     if (isAll) icon = '🔄';
                     else if (isNoEq) icon = '🚫';
-                    else if (eq === 'Power Only') icon = '⚡';
-                    else if (eq === 'Box Truck') icon = '📦';
-                    else if (eq === 'Cargo Van') icon = '🚐';
-                    else if (eq === 'Hauler') icon = '🚗';
-                    else if (eq === 'Hotshot') icon = '🚀';
-                    else if (eq === 'Flatbed') icon = '🏗️';
-                    else if (eq === 'Refrigerated (Reefer)') icon = '❄️';
-                    else if (eq === 'Tanker') icon = '🛢️';
-                    else if (eq === 'Dump Truck') icon = '🚜';
-                    else if (eq === 'Specialized') icon = '⚙️';
+                    else if (eq === 'Tractor') icon = '🚚';
+                    else if (eq === 'Trailer') icon = '🚛';
+                    else if (eq === 'Straight Truck') icon = '📦';
+                    else if (eq === 'Van') icon = '🚐';
+                    else if (eq === 'Hauling') icon = '🚗';
+
+                    const label =
+                      eq === 'Tractor' ? 'Tractor / Power Only' :
+                      eq === 'Straight Truck' ? 'Straight Truck' :
+                      eq === 'Van' ? 'Van / Cargo Van' :
+                      eq === 'Hauling' ? 'Hauling (Car/Auto)' : eq;
 
                     return (
                       <button
@@ -544,7 +536,7 @@ export default function FilterDrawer({
                         style={{ padding: '0.45rem 0.5rem', fontSize: '0.76rem', textAlign: 'center', width: 'auto' }}
                         onClick={() => toggleEquipment(eq)}
                       >
-                        {icon} {eq}
+                        {icon} {label}
                       </button>
                     );
                   })}

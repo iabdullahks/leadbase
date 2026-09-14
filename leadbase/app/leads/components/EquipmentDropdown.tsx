@@ -16,23 +16,15 @@ interface EquipmentOption {
 }
 
 const EQUIPMENT_OPTIONS: EquipmentOption[] = [
-  { value: 'both', label: 'All / Non-Filter', icon: '🔄', category: 'status' },
-  { value: 'no_equipment', label: 'No Equipment', icon: '🚫', category: 'status' },
-  { value: 'has_equipment', label: 'Has Equipment', icon: '✅', category: 'status' },
-  { value: 'Power Only', label: 'Power Only', icon: '⚡', category: 'type' },
-  { value: 'Box Truck', label: 'Box Truck', icon: '📦', category: 'type' },
-  { value: 'Cargo Van', label: 'Cargo Van', icon: '🚐', category: 'type' },
-  { value: 'Hauler', label: 'Hauler (Car/Auto)', icon: '🚗', category: 'type' },
-  { value: 'Hotshot', label: 'Hotshot', icon: '🚀', category: 'type' },
-  { value: 'Tractor', label: 'Tractor', icon: '🚚', category: 'type' },
-  { value: 'Truck', label: 'Truck', icon: '🚛', category: 'type' },
-  { value: 'Trailer', label: 'Trailer', icon: '📦', category: 'type' },
-  { value: 'Van', label: 'Van / Dry Van', icon: '🚐', category: 'type' },
-  { value: 'Flatbed', label: 'Flatbed', icon: '🏗️', category: 'type' },
-  { value: 'Refrigerated (Reefer)', label: 'Refrigerated (Reefer)', icon: '❄️', category: 'type' },
-  { value: 'Tanker', label: 'Tanker', icon: '🛢️', category: 'type' },
-  { value: 'Dump Truck', label: 'Dump Truck', icon: '🚜', category: 'type' },
-  { value: 'Specialized', label: 'Specialized', icon: '⚙️', category: 'type' },
+  { value: 'both',          label: 'All / Non-Filter',     icon: '🔄', category: 'status' },
+  { value: 'no_equipment',  label: 'No Equipment',         icon: '🚫', category: 'status' },
+  { value: 'has_equipment', label: 'Has Equipment',        icon: '✅', category: 'status' },
+  // Types map to FMCSA vehicle_type values in the vehicles table.
+  { value: 'Tractor',        label: 'Tractor / Power Only', icon: '🚚', category: 'type' },
+  { value: 'Trailer',        label: 'Trailer',              icon: '🚛', category: 'type' },
+  { value: 'Straight Truck', label: 'Straight Truck',       icon: '📦', category: 'type' },
+  { value: 'Van',            label: 'Van / Cargo Van',      icon: '🚐', category: 'type' },
+  { value: 'Hauling',        label: 'Hauling (Car/Auto)',   icon: '🚗', category: 'type' },
 ];
 
 export default function EquipmentDropdown({ filters, onChange }: EquipmentDropdownProps) {
@@ -42,18 +34,27 @@ export default function EquipmentDropdown({ filters, onChange }: EquipmentDropdo
   // Determine current selection
   const isNoEquipment =
     (filters.equipment_types || []).includes('No Equipment') || filters.equipment_mode === 'no_equipment';
-  const isSingleType = (filters.equipment_types || []).length === 1 && !isNoEquipment;
-  const singleVal = isSingleType ? filters.equipment_types[0] : null;
+  const equipmentTypeCount = (filters.equipment_types || []).filter(
+    e => e !== 'No Equipment' && e !== 'Both' && e !== 'All / Non-Filter' && e !== 'All'
+  ).length;
+  const isSingleType = equipmentTypeCount === 1 && !isNoEquipment;
+  const isMultiType = equipmentTypeCount > 1 && !isNoEquipment;
+  const singleVal = isSingleType ? filters.equipment_types.find(
+    e => e !== 'No Equipment' && e !== 'Both' && e !== 'All / Non-Filter' && e !== 'All'
+  ) ?? null : null;
   const isHasEquipment =
     filters.equipment_mode === 'has_equipment' &&
     (!filters.equipment_types || filters.equipment_types.length === 0);
 
   let currentVal = 'both';
   if (isNoEquipment) currentVal = 'no_equipment';
+  else if (isMultiType) currentVal = '__multi__'; // Special sentinel for multi-type
   else if (singleVal) currentVal = singleVal;
   else if (isHasEquipment) currentVal = 'has_equipment';
 
-  const selectedOpt = EQUIPMENT_OPTIONS.find(o => o.value === currentVal) || EQUIPMENT_OPTIONS[0];
+  const selectedOpt = currentVal === '__multi__'
+    ? { icon: '🚛', label: `Multiple Types (${equipmentTypeCount})`, value: '__multi__' }
+    : EQUIPMENT_OPTIONS.find(o => o.value === currentVal) || EQUIPMENT_OPTIONS[0];
   const isActive = currentVal !== 'both';
 
   // Click outside listener
