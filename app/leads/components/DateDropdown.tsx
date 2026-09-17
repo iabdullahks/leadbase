@@ -33,6 +33,7 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
   const [customFrom, setCustomFrom] = useState(filters.date_from || '');
   const [customTo, setCustomTo] = useState(filters.date_to || '');
   const [targetField, setTargetField] = useState<FilterState['date_field']>(
+    // Default matches defaultFilterState().date_field = 'scraped_at'
     filters.date_field || 'scraped_at'
   );
 

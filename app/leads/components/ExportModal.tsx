@@ -175,6 +175,9 @@ export default function ExportModal({
         const totalChunksNeeded = Math.max(1, Math.ceil(totalTarget / CHUNK_SIZE));
         const blobParts: BlobPart[] = ['\uFEFF']; // UTF-8 BOM
         let totalRecordsGathered = 0;
+        // Keyset cursor: last seen `id` from the previous chunk.
+        // Server uses this to do `WHERE id > cursor_id` instead of OFFSET — fast on any dataset size.
+        let cursorId: number = 0;
 
         for (let chunkIdx = 0; chunkIdx < totalChunksNeeded; chunkIdx++) {
           if (cancelRef.current) break;
@@ -196,12 +199,20 @@ export default function ExportModal({
               columns: colsToExport,
               limit: CHUNK_SIZE,
               batch_num: currentBatchNum,
+              // Pass cursor for keyset pagination — avoids expensive OFFSET scans
+              cursor_id: cursorId > 0 ? cursorId : undefined,
             }),
           });
 
           if (!res.ok) {
             const errJson = await res.json().catch(() => ({}));
             throw new Error(errJson.error || `Chunk ${currentBatchNum} failed (HTTP ${res.status})`);
+          }
+
+          // Extract the next cursor from response headers (set by export route)
+          const nextCursorHeader = res.headers.get('X-Next-Cursor-Id');
+          if (nextCursorHeader && Number.isFinite(Number(nextCursorHeader))) {
+            cursorId = Number(nextCursorHeader);
           }
 
           let rawText = await res.text();

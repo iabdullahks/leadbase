@@ -7,22 +7,44 @@ export const revalidate = 0;
 
 async function getStats(): Promise<Stats> {
   try {
-    const [totalRes, activeRes, inactiveRes, phoneRes, emailRes, todayRes] = await Promise.all([
+    const now = new Date();
+    // Exact UTC day boundaries — prevents timezone drift from skewing the count
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+    const tomorrowStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0));
+
+    const [totalRes, activeRes, phoneRes, emailRes, todayRes] = await Promise.all([
       supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }),
       supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).eq('carrier_status', 'Active'),
-      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).eq('carrier_status', 'Inactive'),
-      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).neq('phone', ''),
-      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true }).neq('email', ''),
+      // Correct phone count: must be non-empty AND non-null
       supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true })
-        .gte('scraped_at', new Date().toISOString().slice(0, 10)),
+        .neq('phone', '').not('phone', 'is', null),
+      // Correct email count: must be non-empty AND non-null
+      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true })
+        .neq('email', '').not('email', 'is', null),
+      // "Added Today": uses inserted_at (tracks first DB insertion) with exact UTC day range.
+      // Falls back to scraped_at if inserted_at column not yet added (pre-migration).
+      supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true })
+        .gte('inserted_at', todayStart.toISOString())
+        .lt('inserted_at', tomorrowStart.toISOString()),
     ]);
+
+    // Graceful fallback: if inserted_at column doesn't exist yet, use scraped_at
+    const todayCount = todayRes.error
+      ? (await supabaseAdmin
+          .from('carriers')
+          .select('usdot_number', { count: 'exact', head: true })
+          .gte('scraped_at', todayStart.toISOString())
+          .lt('scraped_at', tomorrowStart.toISOString())
+        ).count ?? 0
+      : todayRes.count ?? 0;
+
     return {
       total:      totalRes.count   ?? 0,
       active:     activeRes.count  ?? 0,
-      inactive:   inactiveRes.count ?? 0,
+      inactive:   0, // kept for type compatibility
       with_phone: phoneRes.count   ?? 0,
       with_email: emailRes.count   ?? 0,
-      new_today:  todayRes.count   ?? 0,
+      new_today:  todayCount,
     };
   } catch (err) {
     console.error('getStats error:', err);

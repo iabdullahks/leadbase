@@ -38,6 +38,19 @@ const COLUMN_LABELS: Record<string, string> = {
   profile_url: 'MOTUS Profile URL',
 };
 
+const VALID_DB_COLUMNS = new Set([
+  'id', 'usdot_number', 'legal_name', 'dba_name', 'profile_url',
+  'added_to_motus', 'motus_entry_date', 'motus_last_updated',
+  'carrier_status', 'out_of_service', 'scraped_at', 'updated_at',
+  'principal_address', 'mailing_address', 'phone', 'email',
+  'duns', 'form_of_business', 'state_incorporated', 'new_entrant_status',
+]);
+
+// Chunk size per Supabase request — 1000 rows keeps well within the 8s statement_timeout
+// even with joins. Keyset pagination means each chunk is always a fast indexed seek,
+// not a full scan through millions of rows.
+const KEYSET_CHUNK_SIZE = 1000;
+
 function csvEscapeValue(val: unknown): string {
   if (val === null || val === undefined) return '""';
   if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
@@ -62,16 +75,13 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
     'state_incorporated', 'motus_entry_date', 'scraped_at',
   ];
 
-  const VALID_DB_COLUMNS = new Set([
-    'id', 'usdot_number', 'legal_name', 'dba_name', 'profile_url',
-    'added_to_motus', 'motus_entry_date', 'motus_last_updated',
-    'carrier_status', 'out_of_service', 'scraped_at', 'updated_at',
-    'principal_address', 'mailing_address', 'phone', 'email',
-    'duns', 'form_of_business', 'state_incorporated', 'new_entrant_status',
-  ]);
-
   const dbQueryCols = requestedColumns.filter(c => VALID_DB_COLUMNS.has(c));
-  const selectCols = dbQueryCols.length > 0 ? dbQueryCols.join(',') : '*';
+  // Always include 'id' for keyset pagination cursor (stripped from output if not in requestedColumns)
+  const needId = !dbQueryCols.includes('id');
+  const selectCols = dbQueryCols.length > 0
+    ? (needId ? `id,${dbQueryCols.join(',')}` : dbQueryCols.join(','))
+    : '*';
+
   const dateStr = new Date().toISOString().slice(0, 10);
   let allData: Record<string, unknown>[] = [];
 
@@ -113,31 +123,92 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
       allData = (data as unknown as Record<string, unknown>[]) || [];
     }
   }
-  // ── Scope: All Matching (multi-chunk parallel queries) ───────────────────
+  // ── Scope: All Matching — Keyset/Cursor Pagination ───────────────────────
+  // Uses `id > lastId` instead of OFFSET to avoid the O(offset) PostgreSQL scan cost.
+  // Each chunk is a fast indexed seek regardless of position in the dataset.
+  // This prevents statement_timeout even for millions of records.
   else {
-    const requestedLimit = Math.min(Math.max(Number(body.limit) || 1000, 1), 25000);
+    const requestedLimit = Math.min(Math.max(Number(body.limit) || KEYSET_CHUNK_SIZE, 1), 25000);
     const batchNum = Math.max(Number(body.batch_num) || 1, 1);
-    const baseOffset = (batchNum - 1) * requestedLimit;
-    const CHUNK_SIZE = 1000;
-    const totalChunks = Math.ceil(requestedLimit / CHUNK_SIZE);
+
+    // For multi-batch mode (frontend-controlled batching), use cursor passed in the request
+    // or calculate approximate offset as OFFSET for batch 1 only, then switch to keyset.
+    // For single-batch API calls from the frontend chunker, batch_num advances and we
+    // use an optional cursor_id to do keyset pagination.
+    const cursorId: number | null = typeof body.cursor_id === 'number' ? body.cursor_id : null;
 
     const equipmentCargoIds = await resolveEquipmentCargoIds(supabaseAdmin, filters);
-    const chunkPromises = [];
-    for (let c = 0; c < totalChunks; c++) {
-      const chunkFrom = baseOffset + c * CHUNK_SIZE;
-      const thisChunkSize = Math.min(CHUNK_SIZE, requestedLimit - c * CHUNK_SIZE);
-      const chunkTo = chunkFrom + thisChunkSize - 1;
 
+    // Sequential keyset chunking within this API call:
+    // If batchNum=1 and no cursor → start from id=0
+    // If cursor_id provided → start from cursor_id
+    // If batchNum>1 and no cursor → fall back to OFFSET (legacy, single batch call only)
+    let currentCursorId = cursorId;
+
+    if (currentCursorId === null && batchNum > 1) {
+      // Legacy OFFSET fallback (only for the batch mode sub-option in ExportModal)
+      // This is not used by the primary "all_stream" chunker which passes cursor_id
+      const baseOffset = (batchNum - 1) * requestedLimit;
       const q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false, equipmentCargoIds)
-        .order('id', { ascending: true }).range(chunkFrom, chunkTo);
-      chunkPromises.push(q);
-    }
+        .order('id', { ascending: true })
+        .range(baseOffset, baseOffset + requestedLimit - 1);
+      const { data, error } = await q;
+      if (error) throw error;
+      allData = (data as unknown as Record<string, unknown>[]) || [];
+    } else {
+      // Primary path: keyset pagination — each chunk starts from after the last seen id
+      // This keeps each query O(chunk_size) regardless of position in dataset.
+      let remaining = requestedLimit;
+      let chunkCursor = currentCursorId ?? 0;
 
-    const chunkResults = await Promise.all(chunkPromises);
-    for (const res of chunkResults) {
-      if (res.error) throw res.error;
-      if (res.data) allData.push(...(res.data as unknown as Record<string, unknown>[]));
+      while (remaining > 0) {
+        const thisChunk = Math.min(KEYSET_CHUNK_SIZE, remaining);
+        let q = buildCarrierQuery(supabaseAdmin, filters, selectCols, false, equipmentCargoIds)
+          .order('id', { ascending: true })
+          .limit(thisChunk);
+
+        // Keyset: filter to rows with id > last seen id
+        if (chunkCursor > 0) {
+          q = q.gt('id', chunkCursor);
+        }
+
+        const { data, error } = await q;
+        if (error) throw error;
+        const rows = (data as unknown as Record<string, unknown>[]) || [];
+
+        if (rows.length === 0) break; // No more data
+
+        allData.push(...rows);
+        remaining -= rows.length;
+
+        // Advance cursor to the last id seen
+        const lastRow = rows[rows.length - 1];
+        const lastId = lastRow?.id;
+        if (typeof lastId === 'number' && lastId > 0) {
+          chunkCursor = lastId;
+        } else {
+          break; // id not available, stop to avoid infinite loop
+        }
+
+        if (rows.length < thisChunk) break; // Server returned fewer rows — end of data
+      }
     }
+  }
+
+  // Strip the 'id' column from output if it wasn't in the user's requested columns
+  // But first capture the last id for cursor-based pagination
+  let lastIdForCursor = 0;
+  if (allData.length > 0) {
+    const lastRow = allData[allData.length - 1];
+    const lastId = typeof lastRow?.id === 'number' ? lastRow.id : Number(lastRow?.id);
+    if (Number.isFinite(lastId) && lastId > 0) lastIdForCursor = lastId;
+  }
+
+  if (needId && allData.length > 0) {
+    allData = allData.map(row => {
+      const { id: _id, ...rest } = row as Record<string, unknown> & { id?: unknown };
+      return rest;
+    });
   }
 
   // Determine dynamic, professional filename
@@ -159,6 +230,8 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
       headers: {
         'Content-Type': 'application/json',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        // Return the last cursor id so the frontend can pass it on the next call
+        'X-Next-Cursor-Id': String(lastIdForCursor),
       },
     });
   }
@@ -172,6 +245,8 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="${filename}"`,
+      // Return last id as cursor for the next keyset pagination chunk call
+      'X-Next-Cursor-Id': String(lastIdForCursor),
     },
   });
 }

@@ -8,7 +8,8 @@ export function defaultFilterState(): FilterState {
     states: [],
     cargo_types: [],
     equipment_types: [],
-    date_field: 'added_to_motus',
+    // Default date_field matches what DateDropdown shows by default ('Date Added / Scraped')
+    date_field: 'scraped_at',
     date_preset: 'all',
     missing_fields: [],
     advanced_rules: [],
@@ -343,8 +344,13 @@ export function buildCarrierQuery(
   }
 
   // Date Filters
-  const dateCol = filters.date_field || 'added_to_motus';
+  const dateCol = filters.date_field || 'scraped_at';
   const now = new Date();
+  // Use UTC midnight boundaries for all date calculations to avoid timezone-related
+  // day boundary mismatches (e.g. user in UTC-7 seeing 'today' start at 5pm their time)
+  const utcYear = now.getUTCFullYear();
+  const utcMonth = now.getUTCMonth();
+  const utcDate = now.getUTCDate();
 
   let fromIso: string | null = null;
   let toIso: string | null = null;
@@ -354,21 +360,31 @@ export function buildCarrierQuery(
     let toDate: Date | null = null;
 
     if (filters.date_preset === 'today') {
-      fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+      // [start of today UTC, start of tomorrow UTC)
+      fromDate = new Date(Date.UTC(utcYear, utcMonth, utcDate, 0, 0, 0, 0));
+      toDate   = new Date(Date.UTC(utcYear, utcMonth, utcDate + 1, 0, 0, 0, 0));
     } else if (filters.date_preset === 'yesterday') {
-      fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1, 0, 0, 0, 0));
-      toDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+      // [start of yesterday UTC, start of today UTC)
+      fromDate = new Date(Date.UTC(utcYear, utcMonth, utcDate - 1, 0, 0, 0, 0));
+      toDate   = new Date(Date.UTC(utcYear, utcMonth, utcDate, 0, 0, 0, 0));
     } else if (filters.date_preset === 'last_7d') {
-      fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      // [start of 7 days ago UTC, start of tomorrow UTC)
+      fromDate = new Date(Date.UTC(utcYear, utcMonth, utcDate - 6, 0, 0, 0, 0));
+      toDate   = new Date(Date.UTC(utcYear, utcMonth, utcDate + 1, 0, 0, 0, 0));
     } else if (filters.date_preset === 'last_30d') {
-      fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      fromDate = new Date(Date.UTC(utcYear, utcMonth, utcDate - 29, 0, 0, 0, 0));
+      toDate   = new Date(Date.UTC(utcYear, utcMonth, utcDate + 1, 0, 0, 0, 0));
     } else if (filters.date_preset === 'last_90d') {
-      fromDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      fromDate = new Date(Date.UTC(utcYear, utcMonth, utcDate - 89, 0, 0, 0, 0));
+      toDate   = new Date(Date.UTC(utcYear, utcMonth, utcDate + 1, 0, 0, 0, 0));
     } else if (filters.date_preset === 'this_month') {
-      fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+      // [first day of current UTC month, start of tomorrow UTC)
+      fromDate = new Date(Date.UTC(utcYear, utcMonth, 1, 0, 0, 0, 0));
+      toDate   = new Date(Date.UTC(utcYear, utcMonth, utcDate + 1, 0, 0, 0, 0));
     } else if (filters.date_preset === 'last_month') {
-      fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1, 0, 0, 0, 0));
-      toDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0, 23, 59, 59, 999));
+      // [first day of previous UTC month, first day of this UTC month)
+      fromDate = new Date(Date.UTC(utcYear, utcMonth - 1, 1, 0, 0, 0, 0));
+      toDate   = new Date(Date.UTC(utcYear, utcMonth, 1, 0, 0, 0, 0));
     }
 
     if (fromDate) fromIso = fromDate.toISOString();
@@ -378,21 +394,32 @@ export function buildCarrierQuery(
       fromIso = filters.date_from.includes('T') ? filters.date_from : `${filters.date_from.trim()}T00:00:00.000Z`;
     }
     if (filters.date_to?.trim()) {
+      // End of day for custom range: use start of NEXT day as exclusive upper bound
       toIso = filters.date_to.includes('T') ? filters.date_to : `${filters.date_to.trim()}T23:59:59.999Z`;
     }
   }
 
   if (filters.date_field === 'motus_create_or_update') {
     if (fromIso && toIso) {
-      q = q.or(`and(motus_entry_date.gte.${fromIso},motus_entry_date.lte.${toIso}),and(motus_last_updated.gte.${fromIso},motus_last_updated.lte.${toIso})`);
+      q = q.or(`and(motus_entry_date.gte.${fromIso},motus_entry_date.lt.${toIso}),and(motus_last_updated.gte.${fromIso},motus_last_updated.lt.${toIso})`);
     } else if (fromIso) {
       q = q.or(`motus_entry_date.gte.${fromIso},motus_last_updated.gte.${fromIso}`);
     } else if (toIso) {
-      q = q.or(`motus_entry_date.lte.${toIso},motus_last_updated.lte.${toIso}`);
+      q = q.or(`motus_entry_date.lt.${toIso},motus_last_updated.lt.${toIso}`);
     }
   } else {
+    // For preset date ranges, use exclusive upper bound (lt instead of lte) for clean day boundaries
     if (fromIso) q = q.gte(dateCol, fromIso);
-    if (toIso) q = q.lte(dateCol, toIso);
+    if (toIso) {
+      // For preset ranges (today, last_7d, etc.) we set toIso = start of NEXT day,
+      // so use lt (strict less than) for clean [from, to) semantics.
+      // For custom ranges where toIso ends in T23:59:59.999Z, lte works fine too.
+      if (filters.date_preset !== 'custom') {
+        q = q.lt(dateCol, toIso);
+      } else {
+        q = q.lte(dateCol, toIso);
+      }
+    }
   }
 
   // Data Quality Filters

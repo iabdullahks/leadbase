@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { buildCarrierQuery, defaultFilterState, resolveEquipmentCargoIds, getFmcsaVehicleTypes } from '@/lib/queryBuilder';
+import { buildCarrierQuery, defaultFilterState, resolveEquipmentCargoIds } from '@/lib/queryBuilder';
 import { FilterState } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -26,25 +26,9 @@ export async function POST(req: NextRequest) {
     const { data, count, error } = await q;
     if (error) throw error;
 
-    let total = count ?? 0;
-
-    // If filtering by specific equipment types and no extra query restrictions,
-    // check if exact counts are available in vehicle_type_summary.
-    const activeEq = (filters.equipment_types || []).filter(
-      t => t !== 'No Equipment' && t !== 'Both' && t !== 'All' && t !== 'All / Non-Filter'
-    );
-    if (activeEq.length > 0 && !filters.global_search?.trim() && !filters.usdot?.trim()) {
-      const fmcsaTypes = getFmcsaVehicleTypes(activeEq);
-      const { data: summaryRows } = await supabaseAdmin
-        .from('vehicle_type_summary')
-        .select('carrier_count')
-        .in('vehicle_type', fmcsaTypes);
-      if (summaryRows && summaryRows.length > 0) {
-        const sum = summaryRows.reduce((acc, r) => acc + (r.carrier_count || 0), 0);
-        if (sum > 0) total = sum;
-      }
-    }
-
+    // Use the count from the single canonical query — do NOT override with vehicle_type_summary
+    // as that creates count/results mismatches when other filters are also active.
+    const total = count ?? 0;
     const pages = Math.max(Math.ceil(total / limit), 1);
 
     return NextResponse.json({ leads: data ?? [], total, page, pages, per_page: limit });
