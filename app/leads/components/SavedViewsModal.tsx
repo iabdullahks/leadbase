@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { FilterState, SavedView } from '@/lib/types';
+import { BookmarkIcon, XIcon, CheckIcon } from '@/app/components/Icons';
 
 interface SavedViewsModalProps {
   isOpen: boolean;
@@ -14,7 +15,7 @@ const DEFAULT_PRESET_VIEWS: SavedView[] = [
   {
     id: 'preset-tx-active',
     name: 'New Texas Active Carriers',
-    description: 'Active carriers in Texas added in the last 30 days',
+    description: 'Active carriers in Texas added on Motus in the last 30 days',
     created_at: new Date().toISOString(),
     filter_state: {
       carrier_statuses: ['Active'],
@@ -22,7 +23,7 @@ const DEFAULT_PRESET_VIEWS: SavedView[] = [
       states: ['TX'],
       cargo_types: [],
       equipment_types: [],
-      date_field: 'motus_create_or_update',
+      date_field: 'added_to_motus',
       date_preset: 'last_30d',
       missing_fields: [],
       advanced_rules: []
@@ -31,7 +32,7 @@ const DEFAULT_PRESET_VIEWS: SavedView[] = [
   {
     id: 'preset-phone-ready',
     name: 'Phone & Email Verified Leads',
-    description: 'Carriers with both phone and email contact info ready to outreach',
+    description: 'Active carriers with both phone and email contact info ready to outreach',
     created_at: new Date().toISOString(),
     filter_state: {
       carrier_statuses: ['Active'],
@@ -42,7 +43,7 @@ const DEFAULT_PRESET_VIEWS: SavedView[] = [
       contact_completeness: 'phone_email',
       cargo_types: [],
       equipment_types: [],
-      date_field: 'motus_create_or_update',
+      date_field: 'added_to_motus',
       date_preset: 'all',
       missing_fields: [],
       advanced_rules: []
@@ -59,7 +60,7 @@ const DEFAULT_PRESET_VIEWS: SavedView[] = [
       states: [],
       cargo_types: [],
       equipment_types: [],
-      date_field: 'motus_create_or_update',
+      date_field: 'added_to_motus',
       date_preset: 'last_7d',
       missing_fields: [],
       advanced_rules: []
@@ -129,18 +130,23 @@ export default function SavedViewsModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '540px' }}>
         <div className="modal-header">
-          <div className="modal-title">⭐ Saved Filter Views</div>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <div className="modal-title">
+            <BookmarkIcon size={16} style={{ color: 'var(--cyan)' }} />
+            <span>Saved Filter Views</span>
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Close modal">
+            <XIcon size={16} />
+          </button>
         </div>
 
         <div className="modal-body">
           {/* Save new view */}
-          <div className="sv-save-box">
+          <div>
             <label className="modal-label">Save Active Filters as New View</label>
-            <div style={{ display: 'flex', gap: '0.6rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
               <input
                 className="fp-input"
-                placeholder="View Name (e.g., Texas Active Fleet)"
+                placeholder="View Name (e.g., Texas Heavy Haul Fleet)"
                 value={newViewName}
                 onChange={e => setNewViewName(e.target.value)}
               />
@@ -148,6 +154,7 @@ export default function SavedViewsModal({
                 className="btn-primary"
                 onClick={handleSaveCurrentView}
                 disabled={!newViewName.trim() || isSaving}
+                style={{ whiteSpace: 'nowrap' }}
               >
                 Save View
               </button>
@@ -155,12 +162,12 @@ export default function SavedViewsModal({
           </div>
 
           {/* List of Views */}
-          <div className="sv-list-section">
-            <label className="modal-label">Select View to Apply</label>
+          <div>
+            <label className="modal-label">Available Views</label>
             <div className="sv-list">
               {views.map(v => (
                 <div key={v.id} className="sv-item">
-                  <div className="sv-item-info">
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="sv-item-name">{v.name}</div>
                     {v.description && <div className="sv-item-desc">{v.description}</div>}
                   </div>
@@ -172,7 +179,9 @@ export default function SavedViewsModal({
                       Apply View →
                     </button>
                     {!v.id.startsWith('preset-') && (
-                      <button className="btn-del-sm" onClick={() => handleDeleteView(v.id)}>✕</button>
+                      <button className="btn-del-sm" onClick={() => handleDeleteView(v.id)} aria-label="Delete view">
+                        <XIcon size={14} />
+                      </button>
                     )}
                   </div>
                 </div>

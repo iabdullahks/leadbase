@@ -394,19 +394,24 @@ export function buildCarrierQuery(
       fromIso = filters.date_from.includes('T') ? filters.date_from : `${filters.date_from.trim()}T00:00:00.000Z`;
     }
     if (filters.date_to?.trim()) {
-      toIso = filters.date_to.includes('T') ? filters.date_to : `${filters.date_to.trim()}T23:59:59.999Z`;
+      if (filters.date_to.includes('T')) {
+        toIso = filters.date_to;
+      } else {
+        // Advance by 1 full day and use .lt() so every timestamp on date_to is included
+        const d = new Date(`${filters.date_to.trim()}T00:00:00.000Z`);
+        if (!isNaN(d.getTime())) {
+          d.setUTCDate(d.getUTCDate() + 1);
+          toIso = d.toISOString();
+        } else {
+          toIso = `${filters.date_to.trim()}T23:59:59.999Z`;
+        }
+      }
     }
   }
 
-  // Filter strictly on added_to_motus
+  // Filter strictly on added_to_motus using clean [fromIso, toIso) boundaries
   if (fromIso) q = q.gte(dateCol, fromIso);
-  if (toIso) {
-    if (filters.date_preset !== 'custom') {
-      q = q.lt(dateCol, toIso);
-    } else {
-      q = q.lte(dateCol, toIso);
-    }
-  }
+  if (toIso) q = q.lt(dateCol, toIso);
 
   // Data Quality Filters
   if (filters.missing_fields && filters.missing_fields.length > 0) {

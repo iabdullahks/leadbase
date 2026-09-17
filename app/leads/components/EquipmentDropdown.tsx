@@ -2,6 +2,15 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { FilterState } from '@/lib/types';
+import {
+  TruckIcon,
+  ChevronDownIcon,
+  CheckIcon,
+  BoxIcon,
+  LayersIcon,
+  XCircleIcon,
+  CheckCircleIcon
+} from '@/app/components/Icons';
 
 interface EquipmentDropdownProps {
   filters: FilterState;
@@ -11,20 +20,18 @@ interface EquipmentDropdownProps {
 interface EquipmentOption {
   value: string;
   label: string;
-  icon: string;
   category: 'status' | 'type';
 }
 
 const EQUIPMENT_OPTIONS: EquipmentOption[] = [
-  { value: 'both',          label: 'All / Non-Filter',     icon: '🔄', category: 'status' },
-  { value: 'no_equipment',  label: 'No Equipment',         icon: '🚫', category: 'status' },
-  { value: 'has_equipment', label: 'Has Equipment',        icon: '✅', category: 'status' },
-  // Types map to FMCSA vehicle_type values in the vehicles table.
-  { value: 'Tractor',        label: 'Tractor / Power Only', icon: '🚚', category: 'type' },
-  { value: 'Trailer',        label: 'Trailer',              icon: '🚛', category: 'type' },
-  { value: 'Straight Truck', label: 'Straight Truck',       icon: '📦', category: 'type' },
-  { value: 'Van',            label: 'Van / Cargo Van',      icon: '🚐', category: 'type' },
-  { value: 'Hauling',        label: 'Hauling (Car/Auto)',   icon: '🚗', category: 'type' },
+  { value: 'both',          label: 'All / Non-Filter',     category: 'status' },
+  { value: 'no_equipment',  label: 'No Equipment',         category: 'status' },
+  { value: 'has_equipment', label: 'Has Equipment',        category: 'status' },
+  { value: 'Tractor',        label: 'Tractor / Power Only', category: 'type' },
+  { value: 'Trailer',        label: 'Trailer',              category: 'type' },
+  { value: 'Straight Truck', label: 'Straight Truck',       category: 'type' },
+  { value: 'Van',            label: 'Van / Cargo Van',      category: 'type' },
+  { value: 'Hauling',        label: 'Hauling (Car/Auto)',   category: 'type' },
 ];
 
 export default function EquipmentDropdown({ filters, onChange }: EquipmentDropdownProps) {
@@ -48,12 +55,12 @@ export default function EquipmentDropdown({ filters, onChange }: EquipmentDropdo
 
   let currentVal = 'both';
   if (isNoEquipment) currentVal = 'no_equipment';
-  else if (isMultiType) currentVal = '__multi__'; // Special sentinel for multi-type
+  else if (isMultiType) currentVal = '__multi__';
   else if (singleVal) currentVal = singleVal;
   else if (isHasEquipment) currentVal = 'has_equipment';
 
   const selectedOpt = currentVal === '__multi__'
-    ? { icon: '🚛', label: `Multiple Types (${equipmentTypeCount})`, value: '__multi__' }
+    ? { label: `Multiple (${equipmentTypeCount})`, value: '__multi__' }
     : EQUIPMENT_OPTIONS.find(o => o.value === currentVal) || EQUIPMENT_OPTIONS[0];
   const isActive = currentVal !== 'both';
 
@@ -93,161 +100,60 @@ export default function EquipmentDropdown({ filters, onChange }: EquipmentDropdo
         type="button"
         className={`crm-tb-btn ${isActive ? 'active' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.45rem',
-          cursor: 'pointer',
-          userSelect: 'none',
-          outline: 'none',
-        }}
+        aria-expanded={isOpen}
       >
-        <span style={{ fontSize: '0.95rem' }}>{selectedOpt.icon}</span>
+        <TruckIcon size={14} />
         <span>Equipment: {selectedOpt.label}</span>
-        <span
+        <ChevronDownIcon
+          size={12}
           style={{
-            fontSize: '0.6rem',
-            opacity: 0.6,
-            marginLeft: '0.2rem',
             transform: isOpen ? 'rotate(180deg)' : 'none',
             transition: 'transform 0.15s ease',
+            opacity: 0.6,
           }}
-        >
-          ▼
-        </span>
+        />
       </button>
 
       {isOpen && (
         <div
-          className="fade-up"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            width: '245px',
-            maxHeight: '380px',
-            overflowY: 'auto',
-            background: '#0d1527',
-            border: '1px solid rgba(255, 255, 255, 0.14)',
-            borderRadius: '10px',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.06)',
-            padding: '0.45rem',
-            zIndex: 1000,
-            backdropFilter: 'blur(20px)',
-          }}
+          className="popover-menu"
+          style={{ width: 250 }}
         >
-          {/* Section 1: Fleet Status */}
-          <div
-            style={{
-              padding: '0.35rem 0.55rem 0.2rem',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              color: 'var(--muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-            }}
-          >
-            Fleet Status
-          </div>
-
+          {/* Status Mode Section */}
+          <div className="popover-header">Equipment Status</div>
           {EQUIPMENT_OPTIONS.filter(o => o.category === 'status').map(opt => {
-            const isSelected = opt.value === currentVal;
+            const isSelected = currentVal === opt.value;
             return (
               <button
                 key={opt.value}
                 type="button"
+                className={`popover-item ${isSelected ? 'active' : ''}`}
                 onClick={() => handleSelect(opt.value)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  padding: '0.48rem 0.65rem',
-                  borderRadius: '6px',
-                  background: isSelected ? 'rgba(34, 211, 238, 0.12)' : 'transparent',
-                  border: 'none',
-                  color: isSelected ? '#22d3ee' : '#f1f5f9',
-                  fontSize: '0.82rem',
-                  fontWeight: isSelected ? 600 : 500,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.12s ease',
-                  outline: 'none',
-                }}
-                onMouseEnter={e => {
-                  if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                }}
-                onMouseLeave={e => {
-                  if (!isSelected) e.currentTarget.style.background = 'transparent';
-                }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                  <span style={{ fontSize: '0.95rem' }}>{opt.icon}</span>
-                  <span>{opt.label}</span>
-                </span>
-                {isSelected && <span style={{ color: '#22d3ee', fontSize: '0.85rem' }}>✓</span>}
+                <span>{opt.label}</span>
+                {isSelected && <CheckIcon size={14} style={{ color: 'var(--cyan)' }} />}
               </button>
             );
           })}
 
-          <div
-            style={{
-              height: '1px',
-              background: 'rgba(255, 255, 255, 0.08)',
-              margin: '0.4rem 0.2rem',
-            }}
-          />
-
-          {/* Section 2: Specific Equipment Names */}
-          <div
-            style={{
-              padding: '0.2rem 0.55rem 0.2rem',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              color: 'var(--muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-            }}
-          >
-            Equipment Types
+          {/* Vehicle Types Section */}
+          <div className="popover-header" style={{ borderTop: '1px solid var(--border-hairline)', marginTop: '0.45rem', paddingTop: '0.45rem' }}>
+            FMCSA Vehicle Types
           </div>
-
           {EQUIPMENT_OPTIONS.filter(o => o.category === 'type').map(opt => {
-            const isSelected = opt.value === currentVal;
+            const isSelected = (filters.equipment_types || []).includes(opt.value);
             return (
               <button
                 key={opt.value}
                 type="button"
+                className={`popover-item ${isSelected ? 'active' : ''}`}
                 onClick={() => handleSelect(opt.value)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  padding: '0.44rem 0.65rem',
-                  borderRadius: '6px',
-                  background: isSelected ? 'rgba(34, 211, 238, 0.12)' : 'transparent',
-                  border: 'none',
-                  color: isSelected ? '#22d3ee' : '#e2e8f0',
-                  fontSize: '0.81rem',
-                  fontWeight: isSelected ? 600 : 500,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.12s ease',
-                  outline: 'none',
-                }}
-                onMouseEnter={e => {
-                  if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                }}
-                onMouseLeave={e => {
-                  if (!isSelected) e.currentTarget.style.background = 'transparent';
-                }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                  <span style={{ fontSize: '0.92rem' }}>{opt.icon}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <TruckIcon size={13} style={{ color: isSelected ? 'var(--cyan)' : 'var(--text-tertiary)' }} />
                   <span>{opt.label}</span>
-                </span>
-                {isSelected && <span style={{ color: '#22d3ee', fontSize: '0.85rem' }}>✓</span>}
+                </div>
+                {isSelected && <CheckIcon size={14} style={{ color: 'var(--cyan)' }} />}
               </button>
             );
           })}

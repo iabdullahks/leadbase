@@ -15,6 +15,25 @@ import StatusDropdown from './components/StatusDropdown';
 import DateDropdown from './components/DateDropdown';
 import SortDropdown from './components/SortDropdown';
 import { downloadSingleLeadCsv } from '@/lib/exportSingleLead';
+import {
+  SearchIcon,
+  FilterIcon,
+  DownloadIcon,
+  HistoryIcon,
+  BookmarkIcon,
+  ColumnsIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
+  ArrowUpDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PhoneIcon,
+  MailIcon,
+  ExternalLinkIcon,
+  XIcon,
+  ClockIcon,
+  FileSpreadsheetIcon
+} from '@/app/components/Icons';
 
 const PAGE_SIZE = 50;
 
@@ -39,7 +58,12 @@ function formatDateFull(iso: string) {
 function StatusPill({ status }: { status: string }) {
   const s = (status || '').toLowerCase();
   const cls = s === 'active' ? 'pill-active' : s === 'inactive' ? 'pill-inactive' : s === 'pending' ? 'pill-pending' : 'pill-other';
-  return <span className={`pill ${cls}`}>{status || '?'}</span>;
+  return (
+    <span className={`pill ${cls}`}>
+      <span className="pill-dot" />
+      {status || 'Unknown'}
+    </span>
+  );
 }
 
 export default function LeadsPage() {
@@ -72,6 +96,19 @@ export default function LeadsPage() {
   ]);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Global keyboard shortcut to focus search
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Fetch leads from server
   const fetchLeads = useCallback(async (
@@ -157,13 +194,10 @@ export default function LeadsPage() {
     } else if (key === 'advanced_rules') {
       next.advanced_rules = (next.advanced_rules || []).filter(r => r.id !== val);
     } else if (key === 'has_phone') {
-      // Remove phone filter entirely (set to null = no filter)
       next.has_phone = null;
     } else if (key === 'has_email') {
-      // Remove email filter entirely (set to null = no filter)
       next.has_email = null;
     } else if (key === 'contact_completeness') {
-      // Clear contact_completeness filter
       next.contact_completeness = '';
     } else if (key === 'legal_name') {
       delete next.legal_name;
@@ -181,25 +215,6 @@ export default function LeadsPage() {
     fetchLeads(1, filters, col, newDir);
   }
 
-  function handleSelectAll() {
-    if (selectedIds.length === leads.length && leads.length > 0) {
-      setSelectedIds([]);
-      setSelectAllMatching(false);
-    } else {
-      setSelectedIds(leads.map(l => l.usdot_number));
-    }
-  }
-
-  function handleSelectAllDatabase() {
-    setSelectAllMatching(true);
-    setSelectedIds(leads.map(l => l.usdot_number));
-  }
-
-  function handleClearSelection() {
-    setSelectedIds([]);
-    setSelectAllMatching(false);
-  }
-
   function handleToggleSelectAll(checked: boolean) {
     if (checked) {
       setSelectedIds(leads.map(l => l.usdot_number));
@@ -208,8 +223,6 @@ export default function LeadsPage() {
       setSelectAllMatching(false);
     }
   }
-
-  const handleSelectPageRows = handleToggleSelectAll;
 
   function handleToggleRow(usdot: string) {
     if (selectedIds.includes(usdot)) {
@@ -236,17 +249,29 @@ export default function LeadsPage() {
 
   const isAllPageSelected = leads.length > 0 && leads.every(l => selectedIds.includes(l.usdot_number));
 
+  function renderSortIcon(colName: string) {
+    if (sortCol !== colName) return <ArrowUpDownIcon size={12} style={{ opacity: 0.4, marginLeft: 4 }} />;
+    return sortDir === 'asc' ? (
+      <ArrowUpIcon size={12} style={{ color: 'var(--cyan)', marginLeft: 4 }} />
+    ) : (
+      <ArrowDownIcon size={12} style={{ color: 'var(--cyan)', marginLeft: 4 }} />
+    );
+  }
+
   return (
     <div className="leads-page-container fade-up">
-      {/* Top Professional Toolbar (Linear/Attio/Clay Style) */}
+      {/* Linear-Style Command Toolbar */}
       <div className="crm-toolbar">
         <div className="crm-tb-left">
-          {/* Global Quick Search */}
+          {/* Quick Search */}
           <div className="crm-search-box">
-            <span className="crm-search-icon">🔍</span>
+            <span className="crm-search-icon">
+              <SearchIcon size={14} />
+            </span>
             <input
+              ref={searchInputRef}
               className="crm-search-input"
-              placeholder="Search legal name, DBA, DOT, phone, email..."
+              placeholder="Search legal name, DOT, phone, email…"
               value={filters.global_search || ''}
               onChange={e => {
                 const val = e.target.value;
@@ -256,18 +281,20 @@ export default function LeadsPage() {
                 searchTimer.current = setTimeout(() => fetchLeads(1, next), 400);
               }}
             />
+            <span className="crm-search-kbd">⌘K</span>
           </div>
 
-          {/* Filters Button */}
+          {/* Full Filters Drawer Trigger */}
           <button
             className={`crm-tb-btn ${activeFilterCount > 0 ? 'active' : ''}`}
             onClick={() => setIsFilterOpen(true)}
           >
-            <span>⚙️ Filters</span>
+            <FilterIcon size={13} />
+            <span>Filters</span>
             {activeFilterCount > 0 && <span className="crm-badge">{activeFilterCount}</span>}
           </button>
 
-          {/* Quick Status Filter (Active, Inactive, Pending, etc.) */}
+          {/* Quick Status Filter Popover */}
           <StatusDropdown
             filters={filters}
             onChange={next => {
@@ -276,7 +303,7 @@ export default function LeadsPage() {
             }}
           />
 
-          {/* Quick Equipment Filter (Custom Dark Popover) */}
+          {/* Quick Equipment Filter Popover */}
           <EquipmentDropdown
             filters={filters}
             onChange={next => {
@@ -285,7 +312,7 @@ export default function LeadsPage() {
             }}
           />
 
-          {/* Quick Date Filter (Custom Range & Presets) */}
+          {/* Quick Motus Date Filter Popover */}
           <DateDropdown
             filters={filters}
             onChange={next => {
@@ -301,26 +328,30 @@ export default function LeadsPage() {
             onChange={handleSort}
           />
 
-          {/* Saved Views Button */}
+          {/* Saved Views Popover */}
           <button className="crm-tb-btn" onClick={() => setIsSavedViewsOpen(true)}>
-            <span>⭐ Saved Views</span>
+            <BookmarkIcon size={13} />
+            <span>Saved Views</span>
           </button>
         </div>
 
         <div className="crm-tb-right">
           {/* Columns Selector */}
-          <button className="crm-tb-btn-icon" onClick={() => setIsColumnsOpen(true)} title="Columns">
-            👁️ Columns
+          <button className="crm-tb-btn-icon" onClick={() => setIsColumnsOpen(true)} title="Customize table columns">
+            <ColumnsIcon size={13} />
+            <span>Columns</span>
           </button>
 
-          {/* Export History */}
-          <button className="crm-tb-btn-icon" onClick={() => setIsHistoryOpen(true)} title="History">
-            📜 Audit Logs
+          {/* Audit History */}
+          <button className="crm-tb-btn-icon" onClick={() => setIsHistoryOpen(true)} title="View export audit trail">
+            <HistoryIcon size={13} />
+            <span>Audit Trail</span>
           </button>
 
-          {/* Export Button */}
+          {/* Export Primary Action */}
           <button className="crm-tb-btn-export" onClick={() => setIsExportOpen(true)}>
-            📥 Export ({selectAllMatching ? total : selectedIds.length > 0 ? selectedIds.length : total})
+            <DownloadIcon size={14} />
+            <span>Export ({selectAllMatching ? total.toLocaleString() : selectedIds.length > 0 ? selectedIds.length.toLocaleString() : total.toLocaleString()})</span>
           </button>
         </div>
       </div>
@@ -338,73 +369,88 @@ export default function LeadsPage() {
       {selectedIds.length > 0 && (
         <div className="bulk-banner fade-up">
           <span>
-            ☑ <strong>{selectedIds.length}</strong> carriers on this page selected.
+            <strong>{selectedIds.length}</strong> carriers on this page selected.
           </span>
           {!selectAllMatching && total > leads.length && (
             <button className="bulk-btn-link" onClick={() => setSelectAllMatching(true)}>
-              Select all <strong>{total.toLocaleString()}</strong> matching carriers across database
+              Select all {total.toLocaleString()} matching carriers across database
             </button>
           )}
           {selectAllMatching && (
             <span className="bulk-all-tag">
-              ✨ All {total.toLocaleString()} matching records selected for export
+              All {total.toLocaleString()} matching records selected for export
             </span>
           )}
-          <button className="bulk-btn-clear" onClick={() => { setSelectedIds([]); setSelectAllMatching(false); }}>
+          <button
+            className="bulk-btn-clear"
+            onClick={() => { setSelectedIds([]); setSelectAllMatching(false); }}
+          >
             Clear Selection
           </button>
         </div>
       )}
 
-      {/* Main Carrier Table */}
+      {/* Main Carrier Data Table */}
       <div className="table-wrap-card">
         <table className="crm-table">
           <thead>
             <tr>
-              <th style={{ width: '40px' }}>
+              <th style={{ width: '38px', paddingLeft: '1rem' }}>
                 <input
                   type="checkbox"
                   checked={isAllPageSelected}
-                  onChange={e => handleSelectPageRows(e.target.checked)}
+                  onChange={e => handleToggleSelectAll(e.target.checked)}
                 />
               </th>
               {visibleCols.includes('usdot_number') && (
-                <th onClick={() => handleSort('usdot_number')} className="sortable">
-                  USDOT # {sortCol === 'usdot_number' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                <th onClick={() => handleSort('usdot_number')} className={`sortable ${sortCol === 'usdot_number' ? 'sorted' : ''}`}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    USDOT # {renderSortIcon('usdot_number')}
+                  </span>
                 </th>
               )}
               {visibleCols.includes('legal_name') && (
-                <th onClick={() => handleSort('legal_name')} className="sortable">
-                  Company Name {sortCol === 'legal_name' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                <th onClick={() => handleSort('legal_name')} className={`sortable ${sortCol === 'legal_name' ? 'sorted' : ''}`}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    Company Name {renderSortIcon('legal_name')}
+                  </span>
                 </th>
               )}
               {visibleCols.includes('phone') && <th>Phone</th>}
               {visibleCols.includes('email') && <th>Email</th>}
               {visibleCols.includes('carrier_status') && (
-                <th onClick={() => handleSort('carrier_status')} className="sortable">
-                  Status {sortCol === 'carrier_status' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                <th onClick={() => handleSort('carrier_status')} className={`sortable ${sortCol === 'carrier_status' ? 'sorted' : ''}`}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    Status {renderSortIcon('carrier_status')}
+                  </span>
                 </th>
               )}
               {(visibleCols.includes('added_to_motus') || visibleCols.includes('scraped_at') || visibleCols.includes('motus_entry_date')) && (
-                <th onClick={() => handleSort('added_to_motus')} className="sortable">
-                  Added on Motus {sortCol === 'added_to_motus' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                <th onClick={() => handleSort('added_to_motus')} className={`sortable ${sortCol === 'added_to_motus' ? 'sorted' : ''}`}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    Added on Motus {renderSortIcon('added_to_motus')}
+                  </span>
                 </th>
               )}
-              <th style={{ width: '60px' }}></th>
+              <th style={{ width: '130px', textAlign: 'right', paddingRight: '1rem' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
                 <td colSpan={10} className="table-msg">
-                  <span className="spinner" /> Loading target carriers…
+                  <span className="spinner" style={{ marginRight: '0.6rem' }} />
+                  Loading carrier records…
                 </td>
               </tr>
             ) : leads.length === 0 ? (
               <tr>
                 <td colSpan={10} className="table-msg">
-                  <div style={{ fontSize: '1.8rem', marginBottom: '0.4rem' }}>🔍</div>
-                  No carriers match your active filters
+                  <div style={{ color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
+                    <SearchIcon size={24} />
+                  </div>
+                  <div>No carriers match your active filters</div>
+                  <div style={{ fontSize: '0.78rem', marginTop: '0.35rem' }}>Try clearing or relaxing some search parameters.</div>
                 </td>
               </tr>
             ) : (
@@ -414,25 +460,32 @@ export default function LeadsPage() {
                   className={selectedIds.includes(lead.usdot_number) ? 'row-selected' : ''}
                   onClick={() => setSelectedLead(lead)}
                 >
-                  <td onClick={e => e.stopPropagation()}>
+                  <td style={{ paddingLeft: '1rem' }} onClick={e => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(lead.usdot_number)}
                       onChange={() => handleToggleRow(lead.usdot_number)}
                     />
                   </td>
-                  {visibleCols.includes('usdot_number') && <td><span className="td-usdot">{lead.usdot_number}</span></td>}
+                  {visibleCols.includes('usdot_number') && (
+                    <td>
+                      <span className="td-usdot">#{lead.usdot_number}</span>
+                    </td>
+                  )}
                   {visibleCols.includes('legal_name') && (
                     <td>
-                      <span className="td-name" title={lead.legal_name}>
-                        {lead.legal_name || '—'}
+                      <span className="td-name" title={lead.legal_name || ''}>
+                        {lead.legal_name || 'Unnamed Carrier'}
                       </span>
                     </td>
                   )}
                   {visibleCols.includes('phone') && (
                     <td>
                       {lead.phone ? (
-                        <a href={`tel:${lead.phone}`} className="td-tel" onClick={e => e.stopPropagation()}>{lead.phone}</a>
+                        <a href={`tel:${lead.phone}`} className="td-tel" onClick={e => e.stopPropagation()}>
+                          <PhoneIcon size={12} />
+                          <span>{lead.phone}</span>
+                        </a>
                       ) : (
                         <span className="td-empty">—</span>
                       )}
@@ -441,7 +494,10 @@ export default function LeadsPage() {
                   {visibleCols.includes('email') && (
                     <td>
                       {lead.email ? (
-                        <a href={`mailto:${lead.email}`} className="td-email" onClick={e => e.stopPropagation()}>{lead.email}</a>
+                        <a href={`mailto:${lead.email}`} className="td-email" onClick={e => e.stopPropagation()}>
+                          <MailIcon size={12} />
+                          <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{lead.email}</span>
+                        </a>
                       ) : (
                         <span className="td-empty">—</span>
                       )}
@@ -453,28 +509,20 @@ export default function LeadsPage() {
                   {(visibleCols.includes('added_to_motus') || visibleCols.includes('scraped_at') || visibleCols.includes('motus_entry_date')) && (
                     <td className="td-date">{formatDate(lead.added_to_motus || lead.motus_entry_date)}</td>
                   )}
-                  <td style={{ whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
-                    <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                  <td style={{ textAlign: 'right', paddingRight: '1rem', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center' }}>
                       <button className="btn-view" onClick={() => setSelectedLead(lead)}>
-                        View →
+                        <span>View</span>
+                        <ChevronRightIcon size={11} />
                       </button>
                       <button
                         type="button"
+                        className="btn-csv-single"
                         onClick={() => downloadSingleLeadCsv(lead)}
                         title="Download this single lead as CSV"
-                        style={{
-                          padding: '0.3rem 0.55rem',
-                          background: 'rgba(34,211,238,0.08)',
-                          border: '1px solid rgba(34,211,238,0.25)',
-                          color: 'var(--cyan)',
-                          borderRadius: '6px',
-                          fontSize: '0.74rem',
-                          cursor: 'pointer',
-                          fontWeight: 600,
-                          lineHeight: 1,
-                        }}
                       >
-                        📥 CSV
+                        <DownloadIcon size={11} />
+                        <span>CSV</span>
                       </button>
                     </div>
                   </td>
@@ -489,9 +537,15 @@ export default function LeadsPage() {
       {pages > 1 && (
         <div className="crm-pagination">
           <button className="pg-btn" onClick={() => fetchLeads(1)} disabled={page <= 1}>« First</button>
-          <button className="pg-btn" onClick={() => fetchLeads(page - 1)} disabled={page <= 1}>‹ Prev</button>
-          <span className="pg-info">Page <strong>{page}</strong> of <strong>{pages}</strong> ({total.toLocaleString()} total)</span>
-          <button className="pg-btn" onClick={() => fetchLeads(page + 1)} disabled={page >= pages}>Next ›</button>
+          <button className="pg-btn" onClick={() => fetchLeads(page - 1)} disabled={page <= 1}>
+            <ChevronLeftIcon size={12} style={{ verticalAlign: 'middle' }} />
+          </button>
+          <span className="pg-info">
+            Page <strong>{page}</strong> of <strong>{pages}</strong> ({total.toLocaleString()} total)
+          </span>
+          <button className="pg-btn" onClick={() => fetchLeads(page + 1)} disabled={page >= pages}>
+            <ChevronRightIcon size={12} style={{ verticalAlign: 'middle' }} />
+          </button>
           <button className="pg-btn" onClick={() => fetchLeads(pages)} disabled={page >= pages}>Last »</button>
         </div>
       )}
@@ -538,44 +592,48 @@ export default function LeadsPage() {
         onChange={setVisibleCols}
       />
 
-      {/* Single Lead Detail Drawer */}
+      {/* Single Lead Detail Quick Drawer */}
       {selectedLead && (
         <>
           <div className="filter-overlay" onClick={() => setSelectedLead(null)} />
           <div className="drawer open">
             <div className="drawer-head">
               <div>
-                <div className="drawer-title">{selectedLead.legal_name || '—'}</div>
-                <div className="drawer-usdot">USDOT {selectedLead.usdot_number}</div>
+                <div className="drawer-title">{selectedLead.legal_name || 'Unnamed Carrier'}</div>
+                <div className="drawer-usdot">USDOT #{selectedLead.usdot_number}</div>
               </div>
-              <button className="drawer-close" onClick={() => setSelectedLead(null)}>✕</button>
+              <button className="drawer-close" onClick={() => setSelectedLead(null)} aria-label="Close detail">
+                <XIcon size={16} />
+              </button>
             </div>
             <div className="drawer-body">
               {/* Quick Actions */}
-              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => downloadSingleLeadCsv(selectedLead)}
                   className="drawer-action-link"
                   style={{
-                    background: 'rgba(34,211,238,0.12)',
-                    border: '1px solid var(--cyan)',
-                    color: 'var(--cyan)',
-                    fontWeight: 700,
+                    background: 'rgba(6,182,212,0.1)',
+                    borderColor: 'rgba(6,182,212,0.3)',
+                    color: 'var(--cyan-light)',
                     cursor: 'pointer',
                   }}
                   title="Download this lead as CSV"
                 >
-                  📥 Export Lead (CSV)
+                  <DownloadIcon size={13} />
+                  <span>Export CSV</span>
                 </button>
                 {selectedLead.phone && (
                   <a href={`tel:${selectedLead.phone}`} className="drawer-action-link dlink-green">
-                    📞 {selectedLead.phone}
+                    <PhoneIcon size={13} />
+                    <span>{selectedLead.phone}</span>
                   </a>
                 )}
                 {selectedLead.email && (
                   <a href={`mailto:${selectedLead.email}`} className="drawer-action-link dlink-purple">
-                    ✉️ {selectedLead.email}
+                    <MailIcon size={13} />
+                    <span>Email Carrier</span>
                   </a>
                 )}
                 <a
@@ -584,29 +642,68 @@ export default function LeadsPage() {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  🔗 Full Profile
+                  <ExternalLinkIcon size={13} />
+                  <span>Full Profile</span>
                 </a>
               </div>
 
               <div className="drawer-section">
                 <div className="drawer-section-title">Contact Information</div>
                 <div className="drawer-grid">
-                  <div className="df"><div className="df-label">Phone</div><div className="df-value" style={{ color: selectedLead.phone ? 'var(--green-bright,#34d399)' : 'var(--muted)' }}>{selectedLead.phone || '—'}</div></div>
-                  <div className="df"><div className="df-label">Email</div><div className="df-value" style={{ color: selectedLead.email ? 'var(--purple)' : 'var(--muted)', fontSize: '0.78rem' }}>{selectedLead.email || '—'}</div></div>
+                  <div className="df">
+                    <div className="df-label">Direct Phone</div>
+                    <div className="df-value" style={{ color: selectedLead.phone ? '#34d399' : 'var(--text-tertiary)' }}>
+                      {selectedLead.phone || '—'}
+                    </div>
+                  </div>
+                  <div className="df">
+                    <div className="df-label">Direct Email</div>
+                    <div className="df-value" style={{ color: selectedLead.email ? '#c084fc' : 'var(--text-tertiary)' }}>
+                      {selectedLead.email || '—'}
+                    </div>
+                  </div>
+                  {selectedLead.principal_address && (
+                    <div className="df">
+                      <div className="df-label">Principal Address</div>
+                      <div className="df-value">{selectedLead.principal_address}</div>
+                    </div>
+                  )}
                 </div>
               </div>
+
               <div className="drawer-section">
-                <div className="drawer-section-title">Status & Registration</div>
+                <div className="drawer-section-title">Authority &amp; Classification</div>
                 <div className="drawer-grid">
-                  <div className="df"><div className="df-label">Status</div><div className="df-value"><StatusPill status={selectedLead.carrier_status} /></div></div>
-                  <div className="df"><div className="df-label">USDOT</div><div className="df-value" style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--cyan)', fontSize: '0.78rem' }}>{selectedLead.usdot_number}</div></div>
+                  <div className="df">
+                    <div className="df-label">Carrier Status</div>
+                    <div className="df-value"><StatusPill status={selectedLead.carrier_status} /></div>
+                  </div>
+                  <div className="df">
+                    <div className="df-label">USDOT Number</div>
+                    <div className="df-value" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--cyan)' }}>
+                      #{selectedLead.usdot_number}
+                    </div>
+                  </div>
+                  {selectedLead.form_of_business && (
+                    <div className="df">
+                      <div className="df-label">Business Structure</div>
+                      <div className="df-value">{selectedLead.form_of_business}</div>
+                    </div>
+                  )}
                 </div>
               </div>
+
               <div className="drawer-section">
-                <div className="drawer-section-title">Timeline</div>
+                <div className="drawer-section-title">Motus Discovery Timeline</div>
                 <div className="drawer-grid">
-                  <div className="df"><div className="df-label">Added on Motus</div><div className="df-value">{formatDateFull(selectedLead.added_to_motus || selectedLead.motus_entry_date)}</div></div>
-                  <div className="df"><div className="df-label">Last Scraped</div><div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div></div>
+                  <div className="df">
+                    <div className="df-label">Added on Motus</div>
+                    <div className="df-value">{formatDateFull(selectedLead.added_to_motus || selectedLead.motus_entry_date)}</div>
+                  </div>
+                  <div className="df">
+                    <div className="df-label">Last Ingested</div>
+                    <div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div>
+                  </div>
                 </div>
               </div>
             </div>

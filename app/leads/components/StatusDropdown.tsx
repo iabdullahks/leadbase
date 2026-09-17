@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { FilterState } from '@/lib/types';
+import { ChevronDownIcon, CheckIcon, CheckCircleIcon, XCircleIcon, ClockIcon, AlertCircleIcon, LayersIcon } from '@/app/components/Icons';
 
 interface StatusDropdownProps {
   filters: FilterState;
@@ -11,16 +12,16 @@ interface StatusDropdownProps {
 interface StatusOption {
   value: string;
   label: string;
-  icon: string;
   description: string;
+  dotColor?: string;
 }
 
 const STATUS_OPTIONS: StatusOption[] = [
-  { value: 'all', label: 'All Statuses', icon: '🌐', description: 'Show all carriers' },
-  { value: 'Active', label: 'Active', icon: '🟢', description: 'Authorized & operating carriers' },
-  { value: 'Inactive', label: 'Inactive', icon: '🔴', description: 'Inactive or revoked authorities' },
-  { value: 'Pending', label: 'Pending', icon: '🟡', description: 'Pending authorization' },
-  { value: 'Out of Service', label: 'Out of Service', icon: '⛔', description: 'Carriers with OOS orders' },
+  { value: 'all', label: 'All Statuses', description: 'Show all carriers in index' },
+  { value: 'Active', label: 'Active', description: 'Authorized & operating carriers', dotColor: '#34d399' },
+  { value: 'Inactive', label: 'Inactive', description: 'Inactive or revoked authorities', dotColor: '#fb7185' },
+  { value: 'Pending', label: 'Pending', description: 'Pending authorization', dotColor: '#fbbf24' },
+  { value: 'Out of Service', label: 'Out of Service', description: 'Carriers with active OOS orders', dotColor: '#f43f5e' },
 ];
 
 export default function StatusDropdown({ filters, onChange }: StatusDropdownProps) {
@@ -38,7 +39,6 @@ export default function StatusDropdown({ filters, onChange }: StatusDropdownProp
     ? singleOpt ? singleOpt.label : selectedList[0]
     : `${selectedList.length} Selected`;
 
-  const currentIcon = isAll ? '🌐' : isSingle && singleOpt ? singleOpt.icon : '✅';
   const isActive = !isAll;
 
   // Click outside listener
@@ -73,58 +73,33 @@ export default function StatusDropdown({ filters, onChange }: StatusDropdownProp
         type="button"
         className={`crm-tb-btn ${isActive ? 'active' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.45rem',
-          cursor: 'pointer',
-          userSelect: 'none',
-          outline: 'none',
-        }}
+        aria-expanded={isOpen}
       >
-        <span style={{ fontSize: '0.95rem' }}>{currentIcon}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+          {singleOpt?.dotColor ? (
+            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: singleOpt.dotColor, marginRight: 2 }} />
+          ) : (
+            <LayersIcon size={14} />
+          )}
+        </span>
         <span>Status: {currentLabel}</span>
-        <span
+        <ChevronDownIcon
+          size={12}
           style={{
-            fontSize: '0.6rem',
-            opacity: 0.6,
-            marginLeft: '0.2rem',
             transform: isOpen ? 'rotate(180deg)' : 'none',
             transition: 'transform 0.15s ease',
+            opacity: 0.6,
           }}
-        >
-          ▼
-        </span>
+        />
       </button>
 
       {isOpen && (
         <div
-          className="fade-up"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            width: '240px',
-            background: '#0d1527',
-            border: '1px solid rgba(255, 255, 255, 0.14)',
-            borderRadius: '10px',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.06)',
-            padding: '0.45rem',
-            zIndex: 1000,
-            backdropFilter: 'blur(20px)',
-          }}
+          className="popover-menu"
+          style={{ width: 240 }}
         >
-          <div
-            style={{
-              padding: '0.35rem 0.55rem 0.25rem',
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              color: 'var(--muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-            }}
-          >
-            Carrier Status
+          <div className="popover-header">
+            Carrier Operating Status
           </div>
 
           {STATUS_OPTIONS.map(opt => {
@@ -137,42 +112,22 @@ export default function StatusDropdown({ filters, onChange }: StatusDropdownProp
               <button
                 key={opt.value}
                 type="button"
+                className={`popover-item ${isSelected ? 'active' : ''}`}
                 onClick={() => handleSelect(opt.value)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  padding: '0.5rem 0.65rem',
-                  borderRadius: '6px',
-                  background: isSelected ? 'rgba(34, 211, 238, 0.12)' : 'transparent',
-                  border: 'none',
-                  color: isSelected ? '#22d3ee' : '#f1f5f9',
-                  fontSize: '0.82rem',
-                  fontWeight: isSelected ? 600 : 500,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.12s ease',
-                  outline: 'none',
-                  marginBottom: '2px',
-                }}
-                onMouseEnter={e => {
-                  if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                }}
-                onMouseLeave={e => {
-                  if (!isSelected) e.currentTarget.style.background = 'transparent';
-                }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                  <span style={{ fontSize: '0.95rem' }}>{opt.icon}</span>
-                  <div>
-                    <div style={{ lineHeight: '1.2' }}>{opt.label}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '2px' }}>
-                      {opt.description}
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {opt.dotColor ? (
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: opt.dotColor }} />
+                  ) : (
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: 'var(--text-tertiary)' }} />
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: isSelected ? 600 : 500 }}>{opt.label}</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>{opt.description}</span>
                   </div>
-                </span>
-                {isSelected && <span style={{ color: '#22d3ee', fontSize: '0.85rem' }}>✓</span>}
+                </div>
+
+                {isSelected && <CheckIcon size={14} style={{ color: 'var(--cyan)' }} />}
               </button>
             );
           })}

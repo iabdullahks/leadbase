@@ -1,5 +1,7 @@
 'use client';
 
+import { ColumnsIcon, XIcon } from '@/app/components/Icons';
+
 interface ColumnVisibilityModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -40,8 +42,13 @@ export default function ColumnVisibilityModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
         <div className="modal-header">
-          <div className="modal-title">👁️ Table Columns</div>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <div className="modal-title">
+            <ColumnsIcon size={16} style={{ color: 'var(--cyan)' }} />
+            <span>Table Columns</span>
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Close modal">
+            <XIcon size={16} />
+          </button>
         </div>
 
         <div className="modal-body">

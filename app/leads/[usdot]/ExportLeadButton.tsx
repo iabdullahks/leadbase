@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Carrier } from '@/lib/types';
 import { downloadSingleLeadCsv } from '@/lib/exportSingleLead';
+import { DownloadIcon, CheckIcon } from '@/app/components/Icons';
 
 export default function ExportLeadButton({ carrier }: { carrier: Carrier | Record<string, unknown> }) {
   const [downloaded, setDownloaded] = useState(false);
@@ -19,14 +20,24 @@ export default function ExportLeadButton({ carrier }: { carrier: Carrier | Recor
       onClick={handleDownload}
       className="da-btn"
       style={{
-        background: downloaded ? 'rgba(52,211,153,0.15)' : 'rgba(34,211,238,0.12)',
-        borderColor: downloaded ? '#34d399' : 'var(--cyan)',
-        color: downloaded ? '#34d399' : 'var(--cyan)',
-        fontWeight: 700,
+        background: downloaded ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.1)',
+        borderColor: downloaded ? 'rgba(16,185,129,0.35)' : 'rgba(6,182,212,0.3)',
+        color: downloaded ? '#34d399' : 'var(--cyan-light)',
+        fontWeight: 600,
       }}
       title="Download this lead as CSV"
     >
-      {downloaded ? '✓ Downloaded CSV' : '📥 Download CSV'}
+      {downloaded ? (
+        <>
+          <CheckIcon size={14} />
+          <span>Downloaded CSV</span>
+        </>
+      ) : (
+        <>
+          <DownloadIcon size={14} />
+          <span>Download CSV</span>
+        </>
+      )}
     </button>
   );
 }

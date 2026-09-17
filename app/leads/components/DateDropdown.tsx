@@ -2,6 +2,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { FilterState } from '@/lib/types';
+import {
+  CalendarIcon,
+  ChevronDownIcon,
+  CheckIcon,
+  ClockIcon,
+  SparklesIcon,
+  XIcon
+} from '@/app/components/Icons';
 
 interface DateDropdownProps {
   filters: FilterState;
@@ -11,19 +19,36 @@ interface DateDropdownProps {
 interface DatePresetOption {
   value: FilterState['date_preset'];
   label: string;
-  icon: string;
 }
 
 const DATE_PRESETS: DatePresetOption[] = [
-  { value: 'all', label: 'All Time', icon: '🌐' },
-  { value: 'today', label: 'Today', icon: '⚡' },
-  { value: 'yesterday', label: 'Yesterday', icon: '⏪' },
-  { value: 'last_7d', label: 'Last 7 Days', icon: '📆' },
-  { value: 'last_30d', label: 'Last 30 Days', icon: '🗓️' },
-  { value: 'last_90d', label: 'Last 90 Days', icon: '📊' },
-  { value: 'this_month', label: 'This Month', icon: '📅' },
-  { value: 'last_month', label: 'Last Month', icon: '⏮️' },
+  { value: 'all', label: 'All Time' },
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last_7d', label: 'Last 7 Days' },
+  { value: 'last_30d', label: 'Last 30 Days' },
+  { value: 'last_90d', label: 'Last 90 Days' },
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
 ];
+
+function formatDisplayDate(isoStr?: string): string {
+  if (!isoStr) return '';
+  try {
+    const raw = isoStr.split('T')[0];
+    const parts = raw.split('-');
+    if (parts.length === 3) {
+      const year = parts[0];
+      const monthIdx = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      if (monthIdx >= 0 && monthIdx < 12) {
+        return `${months[monthIdx]} ${day}, ${year}`;
+      }
+    }
+  } catch {}
+  return isoStr;
+}
 
 export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -32,34 +57,30 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
   // Local state for custom date inputs
   const [customFrom, setCustomFrom] = useState(filters.date_from || '');
   const [customTo, setCustomTo] = useState(filters.date_to || '');
-  const [targetField, setTargetField] = useState<FilterState['date_field']>(
-    // Default is 'added_to_motus' — single source of truth for Motus date filtering
-    filters.date_field || 'added_to_motus'
-  );
+  const targetField: FilterState['date_field'] = 'added_to_motus';
 
   // Sync local inputs when filters change externally
   useEffect(() => {
     setCustomFrom(filters.date_from || '');
     setCustomTo(filters.date_to || '');
-    setTargetField(filters.date_field || 'added_to_motus');
-  }, [filters.date_from, filters.date_to, filters.date_field]);
+  }, [filters.date_from, filters.date_to]);
 
   const currentPreset = filters.date_preset || 'all';
   const isCustom = currentPreset === 'custom' || Boolean(filters.date_from || filters.date_to);
   const isActive = currentPreset !== 'all';
 
+  const todayIso = new Date().toISOString().slice(0, 10);
+
   // Compute trigger button label
   let buttonLabel = 'Date: All Time';
-  let buttonIcon = '📅';
 
   if (isCustom) {
-    buttonIcon = '🎯';
     if (filters.date_from && filters.date_to) {
-      buttonLabel = `Date: ${filters.date_from} → ${filters.date_to}`;
+      buttonLabel = `Date: ${formatDisplayDate(filters.date_from)} → ${formatDisplayDate(filters.date_to)}`;
     } else if (filters.date_from) {
-      buttonLabel = `Date: From ${filters.date_from}`;
+      buttonLabel = `Date: From ${formatDisplayDate(filters.date_from)}`;
     } else if (filters.date_to) {
-      buttonLabel = `Date: Up to ${filters.date_to}`;
+      buttonLabel = `Date: Up to ${formatDisplayDate(filters.date_to)}`;
     } else {
       buttonLabel = 'Date: Custom Range';
     }
@@ -67,7 +88,6 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
     const found = DATE_PRESETS.find(p => p.value === currentPreset);
     if (found) {
       buttonLabel = `Date: ${found.label}`;
-      buttonIcon = found.icon;
     }
   }
 
@@ -137,16 +157,6 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
     onChange(next);
   }
 
-  function handleTargetFieldChange(field: FilterState['date_field']) {
-    setTargetField(field);
-    if (isActive) {
-      onChange({
-        ...filters,
-        date_field: field,
-      });
-    }
-  }
-
   return (
     <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
       {/* Toolbar Trigger Button */}
@@ -154,100 +164,56 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
         type="button"
         className={`crm-tb-btn ${isActive ? 'active' : ''}`}
         onClick={() => setIsOpen(!isOpen)}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.45rem',
-          cursor: 'pointer',
-          userSelect: 'none',
-          outline: 'none',
-        }}
+        aria-expanded={isOpen}
       >
-        <span style={{ fontSize: '0.95rem' }}>{buttonIcon}</span>
-        <span style={{ maxWidth: '210px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <CalendarIcon size={14} />
+        <span style={{ maxWidth: 210, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {buttonLabel}
         </span>
-        <span
+        <ChevronDownIcon
+          size={12}
           style={{
-            fontSize: '0.6rem',
-            opacity: 0.6,
-            marginLeft: '0.2rem',
             transform: isOpen ? 'rotate(180deg)' : 'none',
             transition: 'transform 0.15s ease',
+            opacity: 0.6,
           }}
-        >
-          ▼
-        </span>
+        />
       </button>
 
       {/* Popover Dropdown */}
       {isOpen && (
         <div
-          className="fade-up"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            width: '290px',
-            background: '#0d1527',
-            border: '1px solid rgba(255, 255, 255, 0.14)',
-            borderRadius: '10px',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.06)',
-            padding: '0.6rem',
-            zIndex: 1000,
-            backdropFilter: 'blur(20px)',
-          }}
+          className="popover-menu"
+          style={{ width: 290 }}
         >
-          {/* Header & Target Field */}
-          <div style={{ marginBottom: '0.5rem', paddingBottom: '0.4rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            <div
-              style={{
-                fontSize: '0.65rem',
-                fontWeight: 700,
-                color: 'var(--muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                marginBottom: '0.35rem',
-              }}
-            >
+          {/* Header & Target Field Notice */}
+          <div style={{ padding: '0.35rem 0.55rem 0.6rem', borderBottom: '1px solid var(--border-hairline)', marginBottom: '0.45rem' }}>
+            <div className="popover-header" style={{ padding: '0 0 0.3rem 0' }}>
               Date Filter Target
             </div>
             <div
               style={{
                 width: '100%',
-                padding: '0.35rem 0.5rem',
-                fontSize: '0.78rem',
-                background: 'rgba(34, 211, 238, 0.08)',
-                border: '1px solid rgba(34, 211, 238, 0.25)',
-                borderRadius: '6px',
-                color: '#38bdf8',
+                padding: '0.35rem 0.55rem',
+                fontSize: '0.74rem',
+                background: 'rgba(6, 182, 212, 0.08)',
+                border: '1px solid rgba(6, 182, 212, 0.25)',
+                borderRadius: 'var(--radius-xs)',
+                color: 'var(--cyan-light)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.35rem',
+                gap: '0.4rem',
                 fontWeight: 600,
               }}
             >
-              <span>📅</span>
-              <span>Added on Motus</span>
+              <CalendarIcon size={12} />
+              <span>Added on Motus (Single Source of Truth)</span>
             </div>
           </div>
 
           {/* Quick Presets */}
-          <div
-            style={{
-              fontSize: '0.65rem',
-              fontWeight: 700,
-              color: 'var(--muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              marginBottom: '0.3rem',
-              paddingLeft: '0.2rem',
-            }}
-          >
-            Quick Presets
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', marginBottom: '0.6rem' }}>
+          <div className="popover-header">Quick Presets</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px', marginBottom: '0.65rem' }}>
             {DATE_PRESETS.map(preset => {
               const isSelected = !isCustom && currentPreset === preset.value;
               return (
@@ -258,110 +224,112 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.4rem',
-                    padding: '0.38rem 0.5rem',
-                    borderRadius: '6px',
-                    background: isSelected ? 'rgba(34, 211, 238, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                    border: isSelected ? '1px solid rgba(34, 211, 238, 0.4)' : '1px solid rgba(255, 255, 255, 0.06)',
-                    color: isSelected ? '#22d3ee' : '#e2e8f0',
-                    fontSize: '0.76rem',
+                    justifyContent: 'space-between',
+                    padding: '0.4rem 0.6rem',
+                    fontSize: '0.75rem',
+                    borderRadius: 'var(--radius-xs)',
+                    border: '1px solid',
+                    borderColor: isSelected ? 'rgba(6, 182, 212, 0.35)' : 'transparent',
+                    background: isSelected ? 'rgba(6, 182, 212, 0.1)' : 'transparent',
+                    color: isSelected ? 'var(--cyan-light)' : 'var(--text-secondary)',
                     fontWeight: isSelected ? 600 : 400,
                     cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.12s ease',
-                    outline: 'none',
+                    transition: 'var(--t-fast)',
+                    fontFamily: 'inherit',
                   }}
                   onMouseEnter={e => {
-                    if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                    if (!isSelected) {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                      e.currentTarget.style.color = 'var(--text)';
+                    }
                   }}
                   onMouseLeave={e => {
-                    if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                    if (!isSelected) {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = 'var(--text-secondary)';
+                    }
                   }}
                 >
-                  <span style={{ fontSize: '0.85rem' }}>{preset.icon}</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preset.label}</span>
+                  <span>{preset.label}</span>
+                  {isSelected && <CheckIcon size={12} style={{ color: 'var(--cyan)' }} />}
                 </button>
               );
             })}
           </div>
 
-          {/* Divider */}
-          <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '0.4rem 0' }} />
-
           {/* Custom Date Range Section */}
-          <div style={{ padding: '0.2rem' }}>
-            <div
-              style={{
-                fontSize: '0.65rem',
-                fontWeight: 700,
-                color: 'var(--muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                marginBottom: '0.4rem',
-              }}
-            >
-              Custom Date Range
-            </div>
+          <div style={{ borderTop: '1px solid var(--border-hairline)', paddingTop: '0.55rem' }}>
+            <div className="popover-header">Custom Date Range</div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.55rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem', marginBottom: '0.45rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.7rem', color: '#94a3b8', marginBottom: '0.2rem' }}>From</label>
+                <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-tertiary)', marginBottom: '0.2rem', fontWeight: 600 }}>
+                  From {customFrom && <span style={{ color: 'var(--cyan-light)', fontSize: '0.62rem' }}>({formatDisplayDate(customFrom)})</span>}
+                </label>
                 <input
                   type="date"
                   value={customFrom}
+                  max={todayIso}
                   onChange={e => setCustomFrom(e.target.value)}
                   style={{
                     width: '100%',
                     padding: '0.35rem 0.45rem',
-                    fontSize: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderRadius: '6px',
-                    color: '#f1f5f9',
-                    colorScheme: 'dark',
+                    fontSize: '0.74rem',
+                    background: 'var(--bg-input)',
+                    border: '1px solid var(--border-hairline)',
+                    borderRadius: 'var(--radius-xs)',
+                    color: 'var(--text)',
+                    fontFamily: 'inherit',
                     outline: 'none',
                   }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.7rem', color: '#94a3b8', marginBottom: '0.2rem' }}>To</label>
+                <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-tertiary)', marginBottom: '0.2rem', fontWeight: 600 }}>
+                  To {customTo && <span style={{ color: 'var(--cyan-light)', fontSize: '0.62rem' }}>({formatDisplayDate(customTo)})</span>}
+                </label>
                 <input
                   type="date"
                   value={customTo}
+                  max={todayIso}
                   onChange={e => setCustomTo(e.target.value)}
                   style={{
                     width: '100%',
                     padding: '0.35rem 0.45rem',
-                    fontSize: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderRadius: '6px',
-                    color: '#f1f5f9',
-                    colorScheme: 'dark',
+                    fontSize: '0.74rem',
+                    background: 'var(--bg-input)',
+                    border: '1px solid var(--border-hairline)',
+                    borderRadius: 'var(--radius-xs)',
+                    color: 'var(--text)',
+                    fontFamily: 'inherit',
                     outline: 'none',
                   }}
                 />
               </div>
             </div>
 
-            {/* Buttons */}
-            <div style={{ display: 'flex', gap: '0.45rem', marginTop: '0.4rem' }}>
+            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginBottom: '0.5rem', paddingLeft: '0.1rem' }}>
+              Today is {formatDisplayDate(todayIso)}. Future dates return 0 leads.
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '0.45rem' }}>
               <button
                 type="button"
                 onClick={handleApplyCustom}
                 disabled={!customFrom && !customTo}
                 style={{
                   flex: 1,
-                  padding: '0.42rem 0.6rem',
-                  fontSize: '0.78rem',
+                  padding: '0.4rem 0.65rem',
+                  fontSize: '0.76rem',
                   fontWeight: 600,
-                  borderRadius: '6px',
-                  background: (customFrom || customTo) ? '#0284c7' : 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: 'var(--radius-xs)',
                   border: 'none',
-                  color: (customFrom || customTo) ? '#fff' : '#64748b',
-                  cursor: (customFrom || customTo) ? 'pointer' : 'not-allowed',
-                  transition: 'background 0.12s ease',
-                  outline: 'none',
+                  background: customFrom || customTo ? 'var(--cyan)' : 'rgba(255, 255, 255, 0.06)',
+                  color: customFrom || customTo ? 'var(--bg-canvas)' : 'var(--text-tertiary)',
+                  cursor: customFrom || customTo ? 'pointer' : 'not-allowed',
+                  fontFamily: 'inherit',
+                  transition: 'var(--t-fast)',
                 }}
               >
                 Apply Range
@@ -372,15 +340,19 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
                   type="button"
                   onClick={handleClearDate}
                   style={{
-                    padding: '0.42rem 0.6rem',
-                    fontSize: '0.78rem',
-                    borderRadius: '6px',
-                    background: 'rgba(239, 68, 68, 0.12)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
-                    color: '#f87171',
+                    padding: '0.4rem 0.65rem',
+                    fontSize: '0.76rem',
+                    fontWeight: 500,
+                    borderRadius: 'var(--radius-xs)',
+                    border: '1px solid var(--border-subtle)',
+                    background: 'transparent',
+                    color: 'var(--text-secondary)',
                     cursor: 'pointer',
-                    outline: 'none',
+                    fontFamily: 'inherit',
+                    transition: 'var(--t-fast)',
                   }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
                 >
                   Clear
                 </button>

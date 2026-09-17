@@ -1,6 +1,7 @@
 'use client';
 
 import { FilterState } from '@/lib/types';
+import { FilterIcon, XIcon } from '@/app/components/Icons';
 
 interface FilterChipsProps {
   filters: FilterState;
@@ -40,7 +41,6 @@ export default function FilterChips({
   if (filters.dba_name?.trim()) {
     chips.push({ key: 'dba_name', label: `DBA: ${filters.dba_name.trim()}` });
   }
-  // BUG FIX: also show chip for legal_name when set directly (e.g. from advanced search)
   if (filters.legal_name?.trim()) {
     chips.push({ key: 'legal_name', label: `Legal Name: ${filters.legal_name.trim()}` });
   }
@@ -61,7 +61,6 @@ export default function FilterChips({
     chips.push({ key: 'has_email', label: 'No Email' });
   }
 
-  // BUG FIX: Show chips for ALL contact_completeness values, not just 'phone_email'
   if (filters.contact_completeness === 'phone_email') {
     chips.push({ key: 'contact_completeness', label: 'Phone + Email Required' });
   } else if (filters.contact_completeness === 'any') {
@@ -95,14 +94,20 @@ export default function FilterChips({
     });
 
   if (filters.date_preset && filters.date_preset !== 'all') {
-    const fieldPrefix =
-      filters.date_field === 'motus_create_or_update'
-        ? 'MOTUS Reg/Update'
-        : filters.date_field === 'motus_entry_date'
-        ? 'MOTUS Reg'
-        : filters.date_field === 'motus_last_updated'
-        ? 'MOTUS Updated'
-        : 'Added';
+    const fieldPrefix = 'Added';
+    const fmtD = (s?: string) => {
+      if (!s) return '?';
+      try {
+        const p = s.split('T')[0].split('-');
+        if (p.length === 3) {
+          const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const mi = parseInt(p[1], 10) - 1;
+          if (mi >= 0 && mi < 12) return `${m[mi]} ${parseInt(p[2], 10)}`;
+        }
+      } catch {}
+      return s;
+    };
+
     const presetLabels: Record<string, string> = {
       today: `${fieldPrefix}: Today`,
       yesterday: `${fieldPrefix}: Yesterday`,
@@ -111,7 +116,7 @@ export default function FilterChips({
       last_90d: `${fieldPrefix}: Last 90 Days`,
       this_month: `${fieldPrefix}: This Month`,
       last_month: `${fieldPrefix}: Last Month`,
-      custom: `${fieldPrefix}: ${filters.date_from || '?'} → ${filters.date_to || '?'}`,
+      custom: `${fieldPrefix}: ${fmtD(filters.date_from)} → ${fmtD(filters.date_to)}`,
     };
     chips.push({ key: 'date_preset', label: presetLabels[filters.date_preset] || filters.date_preset });
   }
@@ -128,25 +133,29 @@ export default function FilterChips({
     <div className="filter-chips-bar fade-up">
       <div className="fc-left">
         <span className="fc-matching-tag">
-          🎯 <strong>{matchingCount.toLocaleString()}</strong> matching carriers (out of {totalCount.toLocaleString()})
+          <FilterIcon size={13} style={{ color: 'var(--cyan)' }} />
+          <span>
+            <strong>{matchingCount.toLocaleString()}</strong> matching carriers (of {totalCount.toLocaleString()})
+          </span>
         </span>
         <div className="fc-chips-list">
           {chips.map((c, i) => (
             <span key={`${String(c.key)}-${c.val || i}`} className="chip-item">
-              <span className="chip-text">{c.label}</span>
+              <span>{c.label}</span>
               <button
                 className="chip-remove"
                 onClick={() => onRemoveFilter(c.key, c.val)}
                 title="Remove filter"
+                aria-label={`Remove filter ${c.label}`}
               >
-                ✕
+                <XIcon size={11} />
               </button>
             </span>
           ))}
         </div>
       </div>
       <button className="fc-clear-all" onClick={onClearAll}>
-        Clear All ({chips.length})
+        Clear all filters
       </button>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ExportHistoryItem } from '@/lib/types';
+import { HistoryIcon, XIcon, CalendarIcon, DatabaseIcon, FileSpreadsheetIcon } from '@/app/components/Icons';
 
 interface ExportHistoryDrawerProps {
   isOpen: boolean;
@@ -30,18 +31,25 @@ export default function ExportHistoryDrawer({ isOpen, onClose }: ExportHistoryDr
       <div className="filter-panel-drawer" style={{ maxWidth: '480px' }}>
         <div className="fp-head">
           <div className="fp-head-title">
-            <span>📜 Export Audit History</span>
+            <HistoryIcon size={16} style={{ color: 'var(--cyan)' }} />
+            <span>Export Audit Trail</span>
           </div>
-          <button className="fp-close" onClick={onClose}>✕</button>
+          <button className="fp-close" onClick={onClose} aria-label="Close history">
+            <XIcon size={16} />
+          </button>
         </div>
 
         <div className="fp-body">
           {loading ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted)' }}>Loading history…</div>
+            <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
+              <span className="spinner" style={{ marginRight: '0.5rem' }} />
+              Loading audit logs…
+            </div>
           ) : history.length === 0 ? (
-            <div style={{ padding: '3rem 1.5rem', textAlign: 'center', color: 'var(--muted)' }}>
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📁</div>
-              No export records found in audit history.
+            <div style={{ padding: '4rem 1.5rem', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+              <FileSpreadsheetIcon size={32} style={{ color: 'var(--text-muted)', marginBottom: '0.75rem' }} />
+              <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>No export records found</div>
+              <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>Export batches will appear here for audit and traceability.</div>
             </div>
           ) : (
             <div className="eh-list">
@@ -52,8 +60,14 @@ export default function ExportHistoryDrawer({ isOpen, onClose }: ExportHistoryDr
                     <span className="eh-badge">{h.format.toUpperCase()}</span>
                   </div>
                   <div className="eh-meta">
-                    <span>📅 {new Date(h.created_at).toLocaleString()}</span>
-                    <span>📊 {h.record_count.toLocaleString()} records</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <CalendarIcon size={12} />
+                      {new Date(h.created_at).toLocaleString()}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 600, color: 'var(--text)' }}>
+                      <DatabaseIcon size={12} />
+                      {h.record_count.toLocaleString()} leads
+                    </span>
                   </div>
                   {h.filter_summary && (
                     <div className="eh-summary">Filters: {h.filter_summary}</div>
