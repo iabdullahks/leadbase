@@ -21,22 +21,14 @@ async function getStats(): Promise<Stats> {
       // Correct email count: must be non-empty AND non-null
       supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true })
         .neq('email', '').not('email', 'is', null),
-      // "Added Today": uses inserted_at (tracks first DB insertion) with exact UTC day range.
-      // Falls back to scraped_at if inserted_at column not yet added (pre-migration).
+      // "Added Today": carriers where added_to_motus is today [start-of-today, start-of-tomorrow UTC)
+      // Single source of truth for Motus date metrics
       supabaseAdmin.from('carriers').select('usdot_number', { count: 'exact', head: true })
-        .gte('inserted_at', todayStart.toISOString())
-        .lt('inserted_at', tomorrowStart.toISOString()),
+        .gte('added_to_motus', todayStart.toISOString())
+        .lt('added_to_motus', tomorrowStart.toISOString()),
     ]);
 
-    // Graceful fallback: if inserted_at column doesn't exist yet, use scraped_at
-    const todayCount = todayRes.error
-      ? (await supabaseAdmin
-          .from('carriers')
-          .select('usdot_number', { count: 'exact', head: true })
-          .gte('scraped_at', todayStart.toISOString())
-          .lt('scraped_at', tomorrowStart.toISOString())
-        ).count ?? 0
-      : todayRes.count ?? 0;
+    const todayCount = todayRes.count ?? 0;
 
     return {
       total:      totalRes.count   ?? 0,
@@ -56,8 +48,8 @@ async function getRecentLeads() {
   try {
     const { data, error } = await supabaseAdmin
       .from('carriers')
-      .select('usdot_number, legal_name, carrier_status, scraped_at')
-      .order('scraped_at', { ascending: false })
+      .select('usdot_number, legal_name, carrier_status, added_to_motus')
+      .order('added_to_motus', { ascending: false })
       .limit(10);
     if (error) {
       console.error('getRecentLeads error:', error);
@@ -136,7 +128,7 @@ export default async function DashboardPage() {
                 >
                   {lead.carrier_status}
                 </span>
-                <span className="rl-date">{formatDate(lead.scraped_at)}</span>
+                <span className="rl-date">{formatDate(lead.added_to_motus)}</span>
               </Link>
             ))}
           </div>

@@ -53,7 +53,7 @@ export default function LeadsPage() {
 
   // Active Filter State
   const [filters, setFilters] = useState<FilterState>(defaultFilterState());
-  const [sortCol, setSortCol] = useState('scraped_at');
+  const [sortCol, setSortCol] = useState('added_to_motus');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Modals & Drawers state
@@ -68,7 +68,7 @@ export default function LeadsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [visibleCols, setVisibleCols] = useState<string[]>([
-    'usdot_number', 'legal_name', 'phone', 'email', 'carrier_status', 'motus_entry_date', 'scraped_at'
+    'usdot_number', 'legal_name', 'phone', 'email', 'carrier_status', 'added_to_motus'
   ]);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -385,14 +385,9 @@ export default function LeadsPage() {
                   Status {sortCol === 'carrier_status' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                 </th>
               )}
-              {visibleCols.includes('motus_entry_date') && (
-                <th onClick={() => handleSort('motus_entry_date')} className="sortable">
-                  MOTUS Entry {sortCol === 'motus_entry_date' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
-                </th>
-              )}
-              {visibleCols.includes('scraped_at') && (
-                <th onClick={() => handleSort('scraped_at')} className="sortable">
-                  Date Added {sortCol === 'scraped_at' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+              {(visibleCols.includes('added_to_motus') || visibleCols.includes('scraped_at') || visibleCols.includes('motus_entry_date')) && (
+                <th onClick={() => handleSort('added_to_motus')} className="sortable">
+                  Added on Motus {sortCol === 'added_to_motus' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                 </th>
               )}
               <th style={{ width: '60px' }}></th>
@@ -455,11 +450,8 @@ export default function LeadsPage() {
                   {visibleCols.includes('carrier_status') && (
                     <td><StatusPill status={lead.carrier_status} /></td>
                   )}
-                  {visibleCols.includes('motus_entry_date') && (
-                    <td className="td-date">{formatDate(lead.motus_entry_date)}</td>
-                  )}
-                  {visibleCols.includes('scraped_at') && (
-                    <td className="td-date">{formatDate(lead.scraped_at)}</td>
+                  {(visibleCols.includes('added_to_motus') || visibleCols.includes('scraped_at') || visibleCols.includes('motus_entry_date')) && (
+                    <td className="td-date">{formatDate(lead.added_to_motus || lead.motus_entry_date)}</td>
                   )}
                   <td style={{ whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
@@ -613,8 +605,8 @@ export default function LeadsPage() {
               <div className="drawer-section">
                 <div className="drawer-section-title">Timeline</div>
                 <div className="drawer-grid">
-                  <div className="df"><div className="df-label">MOTUS Entry</div><div className="df-value">{formatDate(selectedLead.motus_entry_date)}</div></div>
-                  <div className="df"><div className="df-label">Date Scraped</div><div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div></div>
+                  <div className="df"><div className="df-label">Added on Motus</div><div className="df-value">{formatDateFull(selectedLead.added_to_motus || selectedLead.motus_entry_date)}</div></div>
+                  <div className="df"><div className="df-label">Last Scraped</div><div className="df-value">{formatDateFull(selectedLead.scraped_at)}</div></div>
                 </div>
               </div>
             </div>

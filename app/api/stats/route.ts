@@ -37,26 +37,16 @@ export async function GET() {
         .neq('email', '')
         .not('email', 'is', null),
 
-      // "Added Today": carriers first inserted into our DB today.
-      // Uses inserted_at if the column exists (added by migration 20260917),
-      // otherwise falls back to scraped_at. Both use exact UTC day boundaries
-      // so the count is [start-of-today, start-of-tomorrow).
+      // "Added Today": carriers where added_to_motus is today.
+      // Single source of truth: added_to_motus in range [start-of-today, start-of-tomorrow UTC).
       supabaseAdmin
         .from('carriers')
         .select('usdot_number', { count: 'exact', head: true })
-        .gte('inserted_at', todayStart.toISOString())
-        .lt('inserted_at', tomorrowStart.toISOString()),
+        .gte('added_to_motus', todayStart.toISOString())
+        .lt('added_to_motus', tomorrowStart.toISOString()),
     ]);
 
-    // If inserted_at column doesn't exist yet (pre-migration), fall back to scraped_at
-    const todayCount = todayRes.error
-      ? (await supabaseAdmin
-          .from('carriers')
-          .select('usdot_number', { count: 'exact', head: true })
-          .gte('scraped_at', todayStart.toISOString())
-          .lt('scraped_at', tomorrowStart.toISOString())
-        ).count ?? 0
-      : todayRes.count ?? 0;
+    const todayCount = todayRes.count ?? 0;
 
     return NextResponse.json({
       total:      totalRes.count   ?? 0,

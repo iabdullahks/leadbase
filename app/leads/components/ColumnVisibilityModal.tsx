@@ -15,8 +15,7 @@ const TABLE_COLUMNS = [
   { id: 'email', label: 'Email' },
   { id: 'carrier_status', label: 'Status' },
   { id: 'state_incorporated', label: 'State' },
-  { id: 'motus_entry_date', label: 'MOTUS Entry Date' },
-  { id: 'scraped_at', label: 'Date Added' },
+  { id: 'added_to_motus', label: 'Added on Motus' },
   { id: 'principal_address', label: 'Address' },
 ];
 

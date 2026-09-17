@@ -26,7 +26,7 @@ const ALL_COLUMNS = [
   { id: 'state_incorporated', label: 'State' },
   { id: 'motus_entry_date', label: 'MOTUS Entry Date' },
   { id: 'motus_last_updated', label: 'MOTUS Last Updated' },
-  { id: 'scraped_at', label: 'Date Added' },
+  { id: 'added_to_motus', label: 'Added on Motus' },
   { id: 'profile_url', label: 'MOTUS Profile Link' },
 ];
 

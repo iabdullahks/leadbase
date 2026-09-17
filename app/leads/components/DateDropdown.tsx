@@ -33,15 +33,15 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
   const [customFrom, setCustomFrom] = useState(filters.date_from || '');
   const [customTo, setCustomTo] = useState(filters.date_to || '');
   const [targetField, setTargetField] = useState<FilterState['date_field']>(
-    // Default matches defaultFilterState().date_field = 'scraped_at'
-    filters.date_field || 'scraped_at'
+    // Default is 'added_to_motus' — single source of truth for Motus date filtering
+    filters.date_field || 'added_to_motus'
   );
 
   // Sync local inputs when filters change externally
   useEffect(() => {
     setCustomFrom(filters.date_from || '');
     setCustomTo(filters.date_to || '');
-    setTargetField(filters.date_field || 'scraped_at');
+    setTargetField(filters.date_field || 'added_to_motus');
   }, [filters.date_from, filters.date_to, filters.date_field]);
 
   const currentPreset = filters.date_preset || 'all';
@@ -210,28 +210,26 @@ export default function DateDropdown({ filters, onChange }: DateDropdownProps) {
                 marginBottom: '0.35rem',
               }}
             >
-              Date Target Column
+              Date Filter Target
             </div>
-            <select
-              value={targetField}
-              onChange={e => handleTargetFieldChange(e.target.value as FilterState['date_field'])}
+            <div
               style={{
                 width: '100%',
                 padding: '0.35rem 0.5rem',
                 fontSize: '0.78rem',
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
+                background: 'rgba(34, 211, 238, 0.08)',
+                border: '1px solid rgba(34, 211, 238, 0.25)',
                 borderRadius: '6px',
-                color: '#f1f5f9',
-                outline: 'none',
-                cursor: 'pointer',
+                color: '#38bdf8',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                fontWeight: 600,
               }}
             >
-              <option value="scraped_at" style={{ background: '#0d1527', color: '#fff' }}>Date Added (Scraped)</option>
-              <option value="motus_create_or_update" style={{ background: '#0d1527', color: '#fff' }}>MOTUS Created/Updated</option>
-              <option value="motus_entry_date" style={{ background: '#0d1527', color: '#fff' }}>MOTUS Registration Date</option>
-              <option value="motus_last_updated" style={{ background: '#0d1527', color: '#fff' }}>MOTUS Last Updated</option>
-            </select>
+              <span>📅</span>
+              <span>Added on Motus</span>
+            </div>
           </div>
 
           {/* Quick Presets */}

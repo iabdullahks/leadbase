@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const filters: FilterState = body.filters || defaultFilterState();
     const page = Math.max(Number(body.page || 1), 1);
     const limit = Math.min(Math.max(Number(body.limit || PAGE_SIZE), 1), 500);
-    const sort = body.sort || 'scraped_at';
+    const sort = body.sort || 'added_to_motus';
     const dir = body.dir === 'asc';
 
     const offset = (page - 1) * limit;
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     const status = sp.get('status')?.trim() ?? 'all';
     const hasPhone = sp.get('has_phone') === '1';
     const hasEmail = sp.get('has_email') === '1';
-    const sort = sp.get('sort') ?? 'scraped_at';
+    const sort = sp.get('sort') ?? 'added_to_motus';
     const dir = sp.get('dir') === 'asc';
     const dateFrom = sp.get('date_from')?.trim() ?? '';
     const dateTo = sp.get('date_to')?.trim() ?? '';

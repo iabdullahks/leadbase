@@ -558,13 +558,10 @@ export default function FilterDrawer({
                     <label className="fp-label">Target Date Field</label>
                     <select
                       className="fp-select"
-                      value={draft.date_field || 'scraped_at'}
+                      value={draft.date_field || 'added_to_motus'}
                       onChange={e => setDraft({ ...draft, date_field: e.target.value as FilterState['date_field'] })}
                     >
-                      <option value="scraped_at">Date Added to LeadBase (Scraped Date)</option>
-                      <option value="motus_create_or_update">MOTUS Created or Updated (FMCSA)</option>
-                      <option value="motus_entry_date">MOTUS Entry Date (FMCSA Registration)</option>
-                      <option value="motus_last_updated">MOTUS Last Updated Date</option>
+                      <option value="added_to_motus">Added on Motus (Single Source of Truth)</option>
                     </select>
                   </div>
                   <div>

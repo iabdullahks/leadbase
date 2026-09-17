@@ -8,8 +8,8 @@ export function defaultFilterState(): FilterState {
     states: [],
     cargo_types: [],
     equipment_types: [],
-    // Default date_field matches what DateDropdown shows by default ('Date Added / Scraped')
-    date_field: 'scraped_at',
+    // Default date_field is 'added_to_motus' — the single source of truth for all Motus date filtering
+    date_field: 'added_to_motus',
     date_preset: 'all',
     missing_fields: [],
     advanced_rules: [],
@@ -343,8 +343,8 @@ export function buildCarrierQuery(
     q = q.in('form_of_business', filters.form_of_business);
   }
 
-  // Date Filters
-  const dateCol = filters.date_field || 'scraped_at';
+  // Date Filters — Single source of truth is 'added_to_motus' (date lead entered Motus)
+  const dateCol = 'added_to_motus';
   const now = new Date();
   // Use UTC midnight boundaries for all date calculations to avoid timezone-related
   // day boundary mismatches (e.g. user in UTC-7 seeing 'today' start at 5pm their time)
@@ -394,31 +394,17 @@ export function buildCarrierQuery(
       fromIso = filters.date_from.includes('T') ? filters.date_from : `${filters.date_from.trim()}T00:00:00.000Z`;
     }
     if (filters.date_to?.trim()) {
-      // End of day for custom range: use start of NEXT day as exclusive upper bound
       toIso = filters.date_to.includes('T') ? filters.date_to : `${filters.date_to.trim()}T23:59:59.999Z`;
     }
   }
 
-  if (filters.date_field === 'motus_create_or_update') {
-    if (fromIso && toIso) {
-      q = q.or(`and(motus_entry_date.gte.${fromIso},motus_entry_date.lt.${toIso}),and(motus_last_updated.gte.${fromIso},motus_last_updated.lt.${toIso})`);
-    } else if (fromIso) {
-      q = q.or(`motus_entry_date.gte.${fromIso},motus_last_updated.gte.${fromIso}`);
-    } else if (toIso) {
-      q = q.or(`motus_entry_date.lt.${toIso},motus_last_updated.lt.${toIso}`);
-    }
-  } else {
-    // For preset date ranges, use exclusive upper bound (lt instead of lte) for clean day boundaries
-    if (fromIso) q = q.gte(dateCol, fromIso);
-    if (toIso) {
-      // For preset ranges (today, last_7d, etc.) we set toIso = start of NEXT day,
-      // so use lt (strict less than) for clean [from, to) semantics.
-      // For custom ranges where toIso ends in T23:59:59.999Z, lte works fine too.
-      if (filters.date_preset !== 'custom') {
-        q = q.lt(dateCol, toIso);
-      } else {
-        q = q.lte(dateCol, toIso);
-      }
+  // Filter strictly on added_to_motus
+  if (fromIso) q = q.gte(dateCol, fromIso);
+  if (toIso) {
+    if (filters.date_preset !== 'custom') {
+      q = q.lt(dateCol, toIso);
+    } else {
+      q = q.lte(dateCol, toIso);
     }
   }
 

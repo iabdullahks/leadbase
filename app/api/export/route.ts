@@ -33,8 +33,8 @@ const COLUMN_LABELS: Record<string, string> = {
   authority_status: 'Authority Status',
   motus_entry_date: 'MOTUS Entry Date',
   motus_last_updated: 'MOTUS Last Updated',
-  added_to_motus: 'Added to MOTUS',
-  scraped_at: 'Date Added',
+  added_to_motus: 'Added on Motus',
+  scraped_at: 'Date Scraped',
   profile_url: 'MOTUS Profile URL',
 };
 
@@ -72,7 +72,7 @@ async function runExport(body: Record<string, unknown>): Promise<NextResponse> {
   const requestedColumns: string[] = (body.columns as string[]) || [
     'usdot_number', 'legal_name', 'dba_name', 'phone', 'email',
     'carrier_status', 'out_of_service', 'principal_address',
-    'state_incorporated', 'motus_entry_date', 'scraped_at',
+    'state_incorporated', 'added_to_motus',
   ];
 
   const dbQueryCols = requestedColumns.filter(c => VALID_DB_COLUMNS.has(c));

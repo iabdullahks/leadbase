@@ -12,14 +12,12 @@ export interface SortOption {
 }
 
 export const SORT_OPTIONS: SortOption[] = [
-  { id: 'scraped_desc', col: 'scraped_at', dir: 'desc', label: 'Newest Added', icon: '🆕', description: 'Recently scraped leads first' },
-  { id: 'scraped_asc', col: 'scraped_at', dir: 'asc', label: 'Oldest Added', icon: '📅', description: 'Earliest scraped leads first' },
+  { id: 'motus_desc', col: 'added_to_motus', dir: 'desc', label: 'Newest Added on Motus', icon: '🆕', description: 'Recently entered Motus leads first' },
+  { id: 'motus_asc', col: 'added_to_motus', dir: 'asc', label: 'Oldest Added on Motus', icon: '📅', description: 'Earliest entered Motus leads first' },
   { id: 'usdot_asc', col: 'usdot_number', dir: 'asc', label: 'USDOT (1 → 9)', icon: '🔢', description: 'Lowest USDOT numbers first' },
   { id: 'usdot_desc', col: 'usdot_number', dir: 'desc', label: 'USDOT (9 → 1)', icon: '🔢', description: 'Highest USDOT numbers first' },
   { id: 'name_asc', col: 'legal_name', dir: 'asc', label: 'Company (A → Z)', icon: '🔤', description: 'Alphabetical ascending' },
   { id: 'name_desc', col: 'legal_name', dir: 'desc', label: 'Company (Z → A)', icon: '🔤', description: 'Alphabetical descending' },
-  { id: 'motus_desc', col: 'motus_entry_date', dir: 'desc', label: 'MOTUS Entry (Newest)', icon: '🗓️', description: 'Recent registration date' },
-  { id: 'motus_asc', col: 'motus_entry_date', dir: 'asc', label: 'MOTUS Entry (Oldest)', icon: '🗓️', description: 'Earliest registration date' },
 ];
 
 interface SortDropdownProps {
