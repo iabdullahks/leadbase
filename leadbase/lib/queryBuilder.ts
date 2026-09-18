@@ -207,10 +207,24 @@ export function buildCarrierQuery(
   if (wantsNoEquipment) q = q.eq('has_equipment', false);
   else if (wantsHasEquipment) q = q.eq('has_equipment', true);
 
-  // Global Search
+  // Global Search — Smart indexing dispatch to prevent statement timeouts on 4.12M+ rows
   if (filters.global_search?.trim()) {
     const s = filters.global_search.trim();
-    q = q.or(`legal_name.ilike.%${s}%,dba_name.ilike.%${s}%,usdot_number.ilike.%${s}%,phone.ilike.%${s}%,email.ilike.%${s}%,principal_address.ilike.%${s}%`);
+    if (/^\d+$/.test(s)) {
+      // Pure numeric query -> USDOT lookup (uses unique B-Tree index on usdot_number in <0.25s)
+      if (s.length >= 6) {
+        q = q.eq('usdot_number', s);
+      } else {
+        // Prefix digits (e.g. 4582)
+        q = q.ilike('usdot_number', `${s}%`);
+      }
+    } else if (s.includes('@')) {
+      // Email search
+      q = q.ilike('email', `%${s}%`);
+    } else {
+      // Company name search (searches legal_name and dba_name without scanning massive address fields)
+      q = q.or(`legal_name.ilike.%${s}%,dba_name.ilike.%${s}%`);
+    }
   }
 
   // Identification Filters (USDOT) - supports filters.usdot, filters.dotFrom, filters.dot_number
