@@ -949,6 +949,70 @@ body {
   filter: brightness(1.06);
 }
 
+.crm-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: var(--t-fast);
+  white-space: nowrap;
+}
+
+.crm-sync-pill:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-default);
+  color: var(--text);
+}
+
+.crm-sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.crm-sync-dot.online {
+  background-color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+.crm-sync-dot.syncing {
+  background-color: #06b6d4;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+  animation: pulseGlow 1s ease-in-out infinite;
+}
+
+.crm-sync-dot.paused {
+  background-color: #64748b;
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin-anim {
+  animation: spin 0.85s linear infinite;
+  display: inline-block;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
 /* ── Filter Chips Bar ──────────────────────────────────────────────── */
 .filter-chips-bar {
   display: flex;

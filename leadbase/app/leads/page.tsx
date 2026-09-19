@@ -51,6 +51,15 @@ export default function LeadsPage() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
+  // Live Auto-Sync & Refresh state
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [syncStatus, setSyncStatus] = useState<{
+    isSyncing: boolean;
+    latest?: any;
+    runs?: any[];
+  } | null>(null);
+
   // Active Filter State
   const [filters, setFilters] = useState<FilterState>(defaultFilterState());
   const [sortCol, setSortCol] = useState('scraped_at');
@@ -78,9 +87,10 @@ export default function LeadsPage() {
     pg = 1,
     currentFilters = filters,
     currentSortCol = sortCol,
-    currentSortDir = sortDir
+    currentSortDir = sortDir,
+    silent = false
   ) => {
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const res = await fetch('/api/leads', {
         method: 'POST',
@@ -99,24 +109,58 @@ export default function LeadsPage() {
       setTotal(data.total || 0);
       setPage(data.page || pg);
       setPages(data.pages || 1);
+      setLastRefreshed(new Date());
     } catch (e) {
       console.error('Fetch leads error:', e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [filters, sortCol, sortDir]);
 
+  const fetchStats = useCallback(async () => {
+    try {
+      const r = await fetch('/api/stats', { cache: 'no-store' });
+      const d = await r.json();
+      if (typeof d.total === 'number' && d.total > 0) {
+        setDbTotalCount(d.total);
+      }
+    } catch {}
+  }, []);
+
+  const fetchSyncStatus = useCallback(async () => {
+    try {
+      const r = await fetch('/api/sync-status', { cache: 'no-store' });
+      const d = await r.json();
+      if (d.ok) {
+        setSyncStatus({
+          isSyncing: d.isSyncing,
+          latest: d.latest,
+          runs: d.runs,
+        });
+      }
+    } catch {}
+  }, []);
+
+  // Initial fetch
   useEffect(() => {
     fetchLeads(1);
-    fetch('/api/stats')
-      .then(r => r.json())
-      .then(d => {
-        if (typeof d.total === 'number' && d.total > 0) {
-          setDbTotalCount(d.total);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    fetchStats();
+    fetchSyncStatus();
+  }, [fetchLeads, fetchStats, fetchSyncStatus]);
+
+  // Periodic Auto-Sync (Every 45 seconds for page 1)
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      if (page === 1 && !filters.global_search) {
+        fetchLeads(1, filters, sortCol, sortDir, true);
+        fetchStats();
+      }
+      fetchSyncStatus();
+    }, 45000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, page, filters, sortCol, sortDir, fetchLeads, fetchStats, fetchSyncStatus]);
+
 
   function handleFilterApply(newFilters: FilterState) {
     setFilters(newFilters);
@@ -308,6 +352,39 @@ export default function LeadsPage() {
         </div>
 
         <div className="crm-tb-right">
+          {/* Live Auto-Sync Status Indicator */}
+          <div
+            className="crm-sync-pill"
+            title={
+              syncStatus?.isSyncing
+                ? "Scraper is actively scanning MOTUS & updating Supabase..."
+                : syncStatus?.latest
+                ? `Last cycle: ${syncStatus.latest.stats?.new_leads ?? 0} new leads. Click to toggle auto-refresh.`
+                : "Continuous 12h auto-sync. Click to toggle auto-refresh."
+            }
+            onClick={() => setAutoRefresh(!autoRefresh)}
+          >
+            <span className={`crm-sync-dot ${syncStatus?.isSyncing ? 'syncing' : autoRefresh ? 'online' : 'paused'}`} />
+            <span>
+              {syncStatus?.isSyncing ? 'Scraping Live' : autoRefresh ? 'Live Sync' : 'Sync Paused'}
+            </span>
+          </div>
+
+          {/* Instant Refresh Button */}
+          <button
+            className="crm-tb-btn-icon"
+            onClick={() => {
+              fetchLeads(page);
+              fetchStats();
+              fetchSyncStatus();
+            }}
+            disabled={loading}
+            title={`Refresh data (Last updated: ${lastRefreshed.toLocaleTimeString()})`}
+          >
+            <span className={loading ? 'spin-anim' : ''} style={{ display: 'inline-block' }}>🔄</span>
+            <span>Refresh</span>
+          </button>
+
           {/* Columns Selector */}
           <button className="crm-tb-btn-icon" onClick={() => setIsColumnsOpen(true)} title="Columns">
             👁️ Columns
