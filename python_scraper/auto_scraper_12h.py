@@ -168,6 +168,56 @@ def build_supabase_row(dot, carrier):
         row["usdot_number_num"] = int(usdot)
     return row
 
+def safe_int(val, default=0):
+    if val is None or val == "":
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+async def fetch_equipment_and_cargo_async(session, semaphore, entity_id, dot, carrier_id, retries=2):
+    if not entity_id:
+        return [], []
+    url = f"https://motus.dot.gov/api/public-registration-matrix/{entity_id}"
+    vehicles = []
+    cargo = []
+    async with semaphore:
+        for attempt in range(retries):
+            try:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        matrix_data = await resp.json()
+                        entity = matrix_data.get("entity", {}) or {}
+                        for eq in entity.get("entityEquipment", []):
+                            eq_type = eq.get("equipmentType", {}) or {}
+                            v_type = eq_type.get("equipmentTypeDesc") or ""
+                            if v_type:
+                                vehicles.append({
+                                    "carrier_id": carrier_id,
+                                    "usdot_number": str(dot),
+                                    "vehicle_type": v_type,
+                                    "owned": safe_int(eq.get("owned")),
+                                    "term_leased": safe_int(eq.get("termLeased")),
+                                })
+                        for c in entity.get("entityCargoClassification", []):
+                            desc_obj = c.get("cargoClassification", {}) or {}
+                            c_type = desc_obj.get("cargoClassificationDescription") or ""
+                            if c_type == "Please Describe" and c.get("otherDescription"):
+                                c_type = c.get("otherDescription")
+                            if c_type:
+                                cargo.append({
+                                    "carrier_id": carrier_id,
+                                    "usdot_number": str(dot),
+                                    "classification": c_type,
+                                    "cargo_type": c_type,
+                                })
+                        break
+            except Exception:
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.3)
+    return vehicles, cargo
+
 # ── Load Known DOTs ───────────────────────────────────────────────────────────
 def load_known_dots_from_csv():
     known = set()
@@ -364,7 +414,53 @@ async def run_single_scrape(client, start_dot, end_dot, concurrency, output_csv,
                     if client:
                         try:
                             db_row = build_supabase_row(dot, carrier)
-                            client.table("carriers").upsert(db_row, on_conflict="usdot_number").execute()
+                            res = client.table("carriers").upsert(db_row, on_conflict="usdot_number").execute()
+                            
+                            # Extract carrier ID and fetch equipment & cargo in real-time
+                            carrier_id = None
+                            if res.data:
+                                carrier_id = res.data[0].get("id")
+                            
+                            entity_id = carrier.get("entityId")
+                            if entity_id:
+                                v_list, c_list = await fetch_equipment_and_cargo_async(session, semaphore, entity_id, dot, carrier_id)
+                                if v_list:
+                                    v_canon = [{
+                                        "carrier_id": v["carrier_id"],
+                                        "usdot_number": v["usdot_number"],
+                                        "vehicle_type": v["vehicle_type"],
+                                        "owned": v["owned"],
+                                        "term_leased": v["term_leased"]
+                                    } for v in v_list]
+                                    try:
+                                        client.table("vehicles").insert(v_canon).execute()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        client.table("carrier_vehicles").insert(v_canon).execute()
+                                    except Exception:
+                                        pass
+                                if c_list:
+                                    c_canon = [{
+                                        "carrier_id": c["carrier_id"],
+                                        "usdot_number": c["usdot_number"],
+                                        "classification": c["classification"]
+                                    } for c in c_list]
+                                    try:
+                                        client.table("cargo_classifications").insert(c_canon).execute()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        c_cust = [{
+                                            "carrier_id": c["carrier_id"],
+                                            "usdot_number": c["usdot_number"],
+                                            "cargo_type": c["cargo_type"]
+                                        } for c in c_list]
+                                        client.table("carrier_cargo").insert(c_cust).execute()
+                                    except Exception:
+                                        pass
+                                if v_list or c_list:
+                                    print(f"    [+ EQUIPMENT] USDOT {dot}: +{len(v_list)} vehicles, +{len(c_list)} cargo items added", flush=True)
                         except Exception as ex:
                             print(f"    [DB ERR] USDOT {dot}: {ex}", flush=True)
 
@@ -416,6 +512,7 @@ async def main_scheduler():
     parser.add_argument("--start-dot", type=int, default=DEFAULT_START_DOT, help=f"Starting USDOT (default: {DEFAULT_START_DOT})")
     parser.add_argument("--end-dot", type=int, default=DEFAULT_END_DOT, help=f"Ending USDOT (default: {DEFAULT_END_DOT})")
     parser.add_argument("--concurrency", type=int, default=CONCURRENCY, help=f"Async HTTP concurrency (default: {CONCURRENCY})")
+    parser.add_argument("--once", action="store_true", help="Run a single scrape cycle and exit immediately (ideal for cron / GitHub Actions)")
     args = parser.parse_args()
 
     url = os.getenv("SUPABASE_URL")
@@ -453,6 +550,10 @@ async def main_scheduler():
             )
         except Exception as e:
             print(f"[ERROR] Cycle #{cycle_count} encountered an error: {e}", flush=True)
+
+        if args.once:
+            print("[*] Single-cycle execution (--once) complete. Exiting.", flush=True)
+            break
 
         next_run_time = datetime.now() + timedelta(hours=args.interval)
         print(f"[*] Sleeping for {args.interval} hours... Next cycle starts at {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
