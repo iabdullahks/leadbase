@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import './globals.css';
-import NavLink from './components/NavLink';
-import { DatabaseIcon } from './components/Icons';
+import TopBar from './components/TopBar';
 
 export const metadata: Metadata = {
   title: 'LeadBase — Carrier Intelligence Platform',
@@ -22,47 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <div id="app-root">
-          <header className="topbar">
-            <div className="topbar-left">
-              <NavLink href="/">
-                <div className="brand">
-                  <div className="brand-logo">
-                    <Image
-                      src="/logo.jpg"
-                      alt="LeadBase logo"
-                      width={32}
-                      height={32}
-                      style={{ objectFit: 'cover', display: 'block' }}
-                      priority
-                    />
-                  </div>
-                  <div className="brand-info">
-                    <div className="brand-name">
-                      <span>LeadBase</span>
-                      <span className="brand-badge">PRO</span>
-                    </div>
-                    <div className="brand-sub">Carrier Intelligence</div>
-                  </div>
-                </div>
-              </NavLink>
-
-              <nav className="top-nav" aria-label="Main Navigation">
-                <NavLink href="/">Dashboard</NavLink>
-                <NavLink href="/leads">Leads</NavLink>
-              </nav>
-            </div>
-
-            <div className="topbar-right">
-              <div className="live-badge" title="Connected to real-time Motus database">
-                <span className="live-dot-wrap">
-                  <span className="live-dot-ping" />
-                  <span className="live-dot" />
-                </span>
-                <span>Live Database</span>
-              </div>
-            </div>
-          </header>
-
+          <TopBar />
           <main className="main-content">{children}</main>
         </div>
         <div id="toast-root" />
